@@ -6,10 +6,8 @@ description: Check that program/screen/table/file/report/zoom/message IDs and de
 # naming-standard-compliance
 
 Checks that IDs used in design docs (and the docs' own header/structure) follow this project's
-documented rules, rather than checking cross-references between docs (that's
-`design-doc-internal-consistency`), I/O table completeness (that's `design-doc-io-table-check`), DB
-column existence (that's `xlsx-db-column-check`), or Japanese-language proofreading (that's
-`design-doc-typo-check`).
+documented rules — see the frontmatter `description` above for which sibling skill covers
+cross-references, I/O table completeness, DB-column existence, or typo proofreading instead.
 
 **When the user asks to REV a single program's design-doc workbook, run all 6 single-program-scoped
 skills together in that one pass** — this skill, `design-doc-internal-consistency`,

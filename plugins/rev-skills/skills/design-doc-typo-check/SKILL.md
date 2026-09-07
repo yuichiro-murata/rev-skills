@@ -8,17 +8,15 @@ description: Proofread the free-text Japanese prose inside a program's design-do
 Proofreads one program's design-doc workbook for genuine Japanese-language errors in its free-text
 prose — wrong kanji, a missing character that breaks the sentence, a stray duplicated character, a
 wrong particle that flips the meaning, a garbled leftover fragment from a copy-paste edit. This is
-fundamentally different from every sibling REV skill: those are mechanical diffing/lookup tasks
-(does this ID match a rule, does this table appear in two places, does this cell's font size match
-its neighbor); this one requires actually reading each sentence and understanding what it says. Do
-not try to shortcut it with keyword search or pattern matching — read the prose.
+fundamentally different from every sibling REV skill: those are mechanical diffing/lookup tasks;
+this one requires actually reading each sentence and understanding what it says. Do not try to
+shortcut it with keyword search or pattern matching — read the prose.
 
-This skill does **not** check whether terminology is consistent across documents (a table called one
-name in 機能定義書 and a slightly different name in 画面設計書 is `design-doc-internal-consistency`'s
-job, not a spelling issue), does **not** check ID format (`naming-standard-compliance`), and does
-**not** use font-size/merge signals to find anything (`design-doc-formatting-consistency`) — though a
-formatting anomaly that skill flags is often a good hint of *where* a copy-paste-era typo might also
-be hiding, so it's worth cross-referencing that skill's findings if run in the same pass.
+This skill does **not** check cross-document terminology consistency, ID format, or font/merge
+signals — see the frontmatter `description` above for which sibling skill covers each. A formatting
+anomaly `design-doc-formatting-consistency` flags is often a good hint of *where* a copy-paste-era
+typo might also be hiding, though, so it's worth cross-referencing that skill's findings if run in
+the same pass.
 
 **When the user asks to REV a single program's design-doc workbook, run all 6 single-program-scoped
 skills together in that one pass** — this skill, `design-doc-internal-consistency`,

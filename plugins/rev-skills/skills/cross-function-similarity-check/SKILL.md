@@ -6,11 +6,10 @@ description: Compare similar processing across multiple programs' 機能定義�
 # cross-function-similarity-check
 
 Finds groups of "should behave the same" processing scattered across different programs' design
-docs in one WG, and flags the member that doesn't match the rest of its group. This is a
-**behavioral/usage** comparison (what each program actually fetches/filters/derives), not a
-structural one — for DB column definition consistency use `db-design-cross-consistency`, for one
-program's own I/O-table declaration completeness use `design-doc-io-table-check`, for its other
-internal cross-references use `design-doc-internal-consistency`.
+docs in one WG, and flags the member that doesn't match the rest — a **behavioral/usage** comparison,
+not a structural one (see the frontmatter `description` above for the `db-design-cross-consistency`
+distinction). Also distinct from `design-doc-io-table-check` (one program's own I/O-table
+completeness) and `design-doc-internal-consistency` (its other internal cross-references).
 
 The underlying assumption: when N programs in the same WG all read the same master table (or all
 populate the same common column), their filter/exclusion conditions, fetched columns, sort order,
@@ -34,9 +33,8 @@ it, not just the table-name line), and drop flagged rows/blocks before clusterin
 particular for `処理区分="..."の場合` branch variants — this project commonly deprecates one whole
 branch (spanning several numbered sub-sections) while leaving the sibling branch active, and citing
 a unit from the deprecated branch as this program's real behavior produces exactly the kind of false
-outlier this skill exists to avoid. This matters even more here than in single-program checks: a
-leftover struck-through condition copied from an older program is exactly the kind of noise that
-would produce a false "this program has an extra condition the others lack" finding.
+outlier this skill exists to avoid, and matters even more here than in single-program checks since it
+corrupts a whole cluster comparison rather than just one program's findings.
 
 ## Procedure
 

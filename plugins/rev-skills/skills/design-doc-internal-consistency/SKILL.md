@@ -16,16 +16,10 @@ check, now lives in the separate `design-doc-io-table-check` skill — see below
 concrete diffing steps. The checklist also has purely-manual/subjective items (e.g. "列幅は2、
 行幅は14.3か" 1-4) — skip those, they aren't worth automating.
 
-This skill checks **cross-reference consistency** (does X mentioned here also appear over there).
-It does **not** check the Ⅲ．入出力定義 table's own completeness — that check turned out to be far
-more involved (delegation-tracing through common design docs, WG-folder DB-layout lookups with phase
-precedence, exact-ID-match discipline) than everything else in this skill combined, so it was split
-out into its own dedicated skill, `design-doc-io-table-check`, to get undivided attention rather than
-compete for attention with the lighter checks below. This skill also does **not** check whether a
-referenced DB column physically exists — that's the `xlsx-db-column-check` skill (checklist item
-6-2), nor ID-numbering-rule compliance (`naming-standard-compliance`), nor font-size/cell-merge
-hygiene (`design-doc-formatting-consistency`), nor actual Japanese-language proofreading
-(`design-doc-typo-check`).
+This skill checks **cross-reference consistency** only (does X mentioned here also appear over
+there) — see the frontmatter `description` above for exactly which adjacent checks (I/O table
+completeness, DB-column existence, ID-numbering, formatting, typos) live in the 5 sibling skills
+instead.
 
 **When the user asks to REV a single program's design-doc workbook, run all 6 single-program-scoped
 skills together in that one pass** — this skill, `design-doc-io-table-check`, `xlsx-db-column-check`,

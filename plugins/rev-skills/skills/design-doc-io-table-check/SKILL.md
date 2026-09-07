@@ -7,19 +7,8 @@ description: Check whether a program's 機能定義書「Ⅲ．入出力定義�
 
 Checks one program's 機能定義書「Ⅲ．入出力定義」table for completeness in both directions, grounded
 in this project's own checklist: `01_Doc/99.共通資料/設計書記述ルール/05.設計書記述ルール_チェックリスト.xlsx`
-(sheet "ﾁｪｯｸﾘｽﾄ", items 3-2/3-3). Every table genuinely referenced anywhere in the program's own docs
-(画面設計書, 更新条件表, 帳票設計書, or via delegation to a shared common-design doc) must carry a
-matching declaration with the correct C/R/U/D flags, and every declared table must be both genuinely
-used and have a real DB一覧 entry and テーブルレイアウト file.
-
-This check used to live inside `design-doc-internal-consistency` but was split into its own skill
-because it is far more involved than that skill's other checks (event↔processing-overview tracing,
-response-definition delegation, screen-item/message-ID registry lookups, the screen three-way match,
-exclusive-control presence) — it requires delegation-tracing through common design docs, WG-folder
-DB-layout lookups with phase precedence, exact-ID-match discipline against suffix variants, and a
-struck-through/deprecated-block exclusion discipline that has produced false findings more than once
-when skipped. Splitting it out lets it get full, undiluted attention instead of competing for
-attention with those lighter checks.
+(sheet "ﾁｪｯｸﾘｽﾄ", items 3-2/3-3) — see the frontmatter `description` above for exactly what "complete
+in both directions" covers and why this was split out of `design-doc-internal-consistency`.
 
 **When the user asks to REV a single program's design-doc workbook, run all 5 sibling single-program
 skills together in that one pass** — `design-doc-internal-consistency`, `xlsx-db-column-check`,

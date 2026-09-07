@@ -23,81 +23,50 @@ being found in the real WG folder structure).
 - `**/11_単体テスト/**/サンプルデータ/**`
 - `**/11_単体テスト/**/参考データ/**`
 
-**Why each one is excluded** (background only — skip this on a routine run, it's here for
-onboarding/reference):
+**Why** (background, skip on a routine run):
 
-- **`jira_slack_notifier/`** — an unrelated internal tooling repository, not a design-doc or DB-layout
-  folder at all.
-- **`90_Branches/`** — personal/feature-branch work-in-progress copies, not the authoritative design
-  docs.
-- **`01_Doc/04_共通設計/90_JAGUR各管理台帳/`** — superseded pre-migration copies of the common-design
-  management ledgers (message management, screen-item dictionary, etc.) from the old JAGUR system.
-  The project's own `.claude/settings.json` already denies the `Read` tool on this path, but a
-  Bash/PowerShell `find`/glob still surfaces its files as search hits (and, if one of those paths were
-  ever passed to the Excel-COM dump script directly, that script opens by raw file path and isn't
-  covered by the `Read`-tool deny rule at all) — always exclude this folder explicitly from any
-  recursive search's scope up front, rather than relying on the permission deny alone.
-- **`<WG番号>_<WG名>WG\開発DDL作成用<date>\`** — always excluded from a REV, full stop. This
-  overrides `xlsx-db-column-check`'s earlier guidance to search this folder as a cross-reference
-  location for a non-owning-WG table's layout (that guidance is now moot — see that skill's own file
-  for the historical case it was based on); do not search here even for that purpose anymore.
-- **Any WG's `.../11_単体テスト/<年月>/<ProgramID>_.../サンプルデータ/` or `.../参考データ/`
-  folders** — hold test-data CSV/TSV files (e.g. `JAGUR.TXJAM008.csv`) whose filenames match real
-  table IDs, so a cross-project search for a table ID (e.g. while resolving a DB-column or I/O-table
-  check) reliably surfaces them as noise hits — confirmed across multiple reviews that these files
-  have never once been used as real evidence, since they're test fixtures, not design docs or
-  table-layout files.
+- `jira_slack_notifier/` — unrelated internal tooling repo, not a design-doc/DB-layout folder.
+- `90_Branches/` — personal/WIP branch copies, not authoritative.
+- `01_Doc/04_共通設計/90_JAGUR各管理台帳/` — superseded pre-migration ledger copies.
+  `.claude/settings.json` denies `Read` here, but Glob/Grep and the Excel-COM dump script (opens by
+  raw path, bypassing the `Read` deny) still see these files — exclude explicitly regardless.
+- `<WG>WG\開発DDL作成用<date>\` — always excluded; a former exception for cross-WG table-layout
+  lookup no longer applies.
+- `.../11_単体テスト/.../サンプルデータ/` and `.../参考データ/` — test-data files whose names match
+  real table IDs (e.g. `JAGUR.TXJAM008.csv`); confirmed never real evidence across multiple reviews.
 
-## Do not spawn your own sub-agents to parallelize a large table/sheet list
+## Don't parallelize a large table/sheet list across your own sub-agents
 
-When a program has an unusually large number of 更新条件表 sheets or a very large 画面設計書 (e.g.
-`PSJCO308_焼成ｻﾔ詰め組み.xlsx`, which has 29 更新条件表 sheets and a 2092-row 画面設計書), the natural
-instinct is to split the work into groups and hand each group to a separate sub-agent so they run in
-parallel. **Don't do this** — work through the list yourself, sequentially, in your own context,
-however long it takes. This is a confirmed, real failure mode, not a theoretical concern:
+However large the list (e.g. `PSJCO308_焼成ｻﾔ詰め組み.xlsx`'s 29 更新条件表 sheets, or its 2092-row
+画面設計書), work through it yourself, sequentially — do not fan out to your own sub-agents to split
+it. Confirmed real failure on `PSJCO308`: both `design-doc-io-table-check` and `xlsx-db-column-check`
+split their 29 tables across 4-7 sub-agents each; several got broken/empty prompts and returned
+nothing, others were still running when the parent's own turn ended (forcing the orchestrating
+session to step in and force a synthesis), and the extra request volume materially contributed to
+the session hitting its rate limit. None of it was faster or more thorough than working the list
+directly — it only added failure points and cost.
 
-On the `PSJCO308` review, both the `design-doc-io-table-check` and `xlsx-db-column-check` agents
-independently decided to fan out into 4-7 of their own sub-agents (splitting the 29 tables into
-groups). The result: some sub-agents received broken/empty prompts and returned nothing usable
-("I have no task in progress — there's nothing to report or act on"), several others were still
-mid-flight when the *parent* agent's own turn ended, leaving the parent stuck sending repeated
-"I'll wait for the others to finish" non-answers (which is not a valid final report and requires the
-orchestrating session to intervene and force a synthesis), and the fan-out multiplied total token/
-request volume enough to be a material contributor to the whole session hitting its rate limit
-mid-review. None of this parallelism actually made the review faster or more thorough than working
-through the same 29 tables directly — it just added failure points, coordination overhead, and cost.
+If a list is too large for one pass, work it in batches within your own turn (e.g. 5-10 tables at a
+time, repeat) and report any remaining gap explicitly as a coverage limitation — don't silently drop
+scope, and don't spin up sub-agents to cover the rest. Only the orchestrating session decides whether
+to split a REV across multiple parallel agents.
 
-If a task looks too large to finish in one pass, the correct response is to **work through it in
-batches within your own single agent turn** (e.g. dump/check 5-10 tables, continue to the next batch,
-repeat) and, if you still can't finish everything, **say so explicitly as a coverage gap in your
-final report** — don't silently drop scope, and don't spin up parallel sub-agents to cover the rest.
-Only the orchestrating session (the one that invoked you) decides whether to split a large REV across
-multiple parallel agents — that decision and its coordination cost belong there, not inside a single
-skill-following agent's own turn.
+## Orchestrating session: dump once, share the text, across parallel agents on the same workbook
 
-## Orchestrating session: dump once, share the text, when running multiple REV skills in parallel against the same workbook
+When several sibling skills (`design-doc-internal-consistency`, `design-doc-io-table-check`,
+`xlsx-db-column-check`, `naming-standard-compliance`, `design-doc-formatting-consistency`,
+`design-doc-typo-check`) run as parallel background agents against the SAME target workbook, don't
+let each one independently dump it from scratch — up to 6x duplicated Excel COM cycles on an
+identical file. Confirmed real waste: a review of `XJC_ｼｽﾃﾑ共通設計書.xlsx`'s `ﾛｯﾄ停止ﾁｪｯｸ` sheet had
+3 agents each re-dump the same 999-row sheet because their prompts didn't say to reuse an existing
+dump.
 
-When a single-program REV runs several of the sibling skills (`design-doc-internal-consistency`,
-`design-doc-io-table-check`, `xlsx-db-column-check`, `naming-standard-compliance`,
-`design-doc-formatting-consistency`, `design-doc-typo-check`) as parallel background agents against
-the SAME target workbook, do not let each agent independently open Excel COM and dump that workbook's
-sheets from scratch — that is pure duplicated work multiplied by the number of agents launched (up to
-6x the Excel COM startup/dump/close cycles on the identical file). Confirmed as a real inefficiency in
-this project: a review of `XJC_ｼｽﾃﾑ共通設計書.xlsx`'s `ﾛｯﾄ停止ﾁｪｯｸ` sheet had the orchestrating
-session dump the sheet once for its own inspection, then launch 3 agents that each independently
-re-dumped the identical 999-row sheet via their own Excel COM call, because their prompts didn't say
-to reuse the existing dump.
-
-Instead: **before launching the batch of parallel agents, run the bulk `Value2` dump (per "The dump
-script" below) once yourself against every sheet of the target workbook, and pass the resulting
-scratchpad `.txt` file paths into each agent's prompt** ("read `<scratch dir>/<prefix>_<sheet>.txt`
-for sheet X's bulk contents — don't re-dump it yourself"). Each agent still needs its own live Excel
-COM access for anything formatting-based (struck-through/gray-color scans, font-size/merge scans,
-per-character DBNull resolution) — a text dump can't carry `Font.Strikethrough`/`Font.Size`/
-`MergeCells`, so those targeted passes still open the workbook directly, per-agent. Only the bulk
-`Value2` pass (the part every one of the 6 skills does identically) is worth sharing; don't try to
-also share the formatting scans across agents — coordinating who-scanned-which-column across
-independent agent processes would cost more than the targeted scans themselves.
+Instead: before launching the batch, run the bulk `Value2` dump (per "The dump script" below) once
+yourself against every sheet, and pass the resulting `.txt` file paths into each agent's prompt
+("read `<path>` for sheet X — don't re-dump it"). Each agent still needs its own live Excel COM
+access for anything formatting-based (strikethrough/gray-color, font-size/merge, per-character
+DBNull) — a text dump can't carry those — so only the bulk `Value2` pass is worth sharing; don't try
+to coordinate the formatting scans across agents too, that costs more than it saves.
 
 ## The dump script
 
@@ -129,19 +98,14 @@ template stub is a handful) without needing the full cell-value dump. If that sk
 needs to confirm actual content rather than just row count, it can open the one sheet itself via its
 own light Excel COM check — that's still far cheaper than every REV dumping the full sheet by default.
 
-**Format the `Value2` array into `[row,col]=value` text via a compiled C# helper (`Add-Type`), not a
-plain PowerShell `for` loop.** Benchmarked for real against
-`XJC_ｼｽﾃﾑ共通設計書.xlsx`'s `実績表項目設定` sheet (2652 rows × 116 cols, ~307k cells): the plain
-PowerShell nested loop took 7.8s to format, while the identical logic in a compiled C# static method
-(`XlsxDumpHelper.FormatSheet`, called once per sheet) took 55ms — about 140x faster, verified
-character-for-character identical output on the same real data. This is a pure PowerShell-interpreter
-overhead cost (the `Value2` COM pull itself is fast — 194ms for the same range — the bottleneck is
-iterating ~300k array-index/string-build operations in interpreted PowerShell, not the COM call), so
-it costs nothing in correctness to fix and pays off most on exactly the large sheets where dumping
-already takes longest. `$excel.ScreenUpdating`/`EnableEvents`/`Calculation` flags were also tested and
-made no measurable difference to `Workbooks.Open` time (~5.2-5.9s either way on this workbook) — that
-open cost is fixed COM overhead, not worth trying to shave further; only the formatting loop is worth
-optimizing.
+**Format the `Value2` array via a compiled C# helper (`Add-Type`), not a plain PowerShell `for` loop.**
+Benchmarked on `XJC_ｼｽﾃﾑ共通設計書.xlsx`'s `実績表項目設定` sheet (2652×116, ~307k cells): the
+PowerShell loop took 7.8s to format vs 55ms for the equivalent compiled C# method — ~140x faster,
+verified byte-identical output. The bottleneck is PowerShell interpreter overhead iterating cells in
+memory, not the COM call (`Value2` itself pulls in 194ms) — so this costs nothing in correctness and
+pays off most on the largest sheets. `ScreenUpdating`/`EnableEvents`/`Calculation` flags were also
+tested and made no difference to `Workbooks.Open` time (~5.2-5.9s either way, fixed COM overhead) —
+only the formatting loop is worth optimizing.
 
 ```powershell
 Add-Type @"

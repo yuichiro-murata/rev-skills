@@ -6,12 +6,10 @@ description: Scan a design-doc workbook for stray font-size and cell-merge irreg
 # design-doc-formatting-consistency
 
 Finds stray font-size and cell-merge irregularities across every sheet of one program's design-doc
-workbook. Unlike the other REV skills, this one isn't grounded in the project's checklist or a
-cross-reference rule — it's a structural-hygiene sweep: a cell whose formatting doesn't match its
-neighbors is a strong signal that a copy-paste edit didn't fully take (a pasted row keeping the
-source's font size, a duplicated header block that was never brought up to date, a mid-list row
-merged differently than its siblings). These are worth surfacing to the designer even though they
-aren't "wrong" in the same sense as a broken cross-reference.
+workbook — see the frontmatter `description` above for what these irregularities typically signal.
+Unlike the other REV skills, this one isn't grounded in the project's checklist or a cross-reference
+rule; it's a pure structural-hygiene sweep, worth surfacing to the designer even though these aren't
+"wrong" in the same sense as a broken cross-reference.
 
 **When the user asks to REV a single program's design-doc workbook, run all 6 single-program-scoped
 skills together in that one pass** — this skill, `design-doc-internal-consistency`,

@@ -6,11 +6,10 @@ description: Check whether a function-definition Excel doc (機能定義書/画�
 # xlsx-db-column-check
 
 Cross-checks the DB columns referenced by a function/screen design Excel workbook against the
-actual column list defined in the project's table-layout ("テーブルレイアウト") Excel files, and
-reports any referenced column name that has no matching row in the real table definition.
-
-This was developed against Excel-based design docs that follow a common template across WGs in
-this codebase (機能定義書 / 画面設計書 / 更新条件表 / ﾃｰﾌﾞﾙﾚｲｱｳﾄ sheets). It generalizes to any
+actual column list defined in the project's table-layout ("テーブルレイアウト") Excel files — see
+the frontmatter `description` above for what counts as a miss and how this differs from
+`design-doc-io-table-check`. Developed against the common Excel template shared across WGs in this
+codebase (機能定義書 / 画面設計書 / 更新条件表 / ﾃｰﾌﾞﾙﾚｲｱｳﾄ sheets); generalizes to any
 `<機能定義書xlsx>` + `<DB設計書folder>` pair, not just one specific program.
 
 **When the user asks to REV a single program's design-doc workbook, run all 6 single-program-scoped
