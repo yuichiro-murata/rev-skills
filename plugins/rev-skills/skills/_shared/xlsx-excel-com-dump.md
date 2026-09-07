@@ -129,6 +129,20 @@ template stub is a handful) without needing the full cell-value dump. If that sk
 needs to confirm actual content rather than just row count, it can open the one sheet itself via its
 own light Excel COM check — that's still far cheaper than every REV dumping the full sheet by default.
 
+**Format the `Value2` array into `[row,col]=value` text via a compiled C# helper (`Add-Type`), not a
+plain PowerShell `for` loop.** Benchmarked for real against
+`XJC_ｼｽﾃﾑ共通設計書.xlsx`'s `実績表項目設定` sheet (2652 rows × 116 cols, ~307k cells): the plain
+PowerShell nested loop took 7.8s to format, while the identical logic in a compiled C# static method
+(`XlsxDumpHelper.FormatSheet`, called once per sheet) took 55ms — about 140x faster, verified
+character-for-character identical output on the same real data. This is a pure PowerShell-interpreter
+overhead cost (the `Value2` COM pull itself is fast — 194ms for the same range — the bottleneck is
+iterating ~300k array-index/string-build operations in interpreted PowerShell, not the COM call), so
+it costs nothing in correctness to fix and pays off most on exactly the large sheets where dumping
+already takes longest. `$excel.ScreenUpdating`/`EnableEvents`/`Calculation` flags were also tested and
+made no measurable difference to `Workbooks.Open` time (~5.2-5.9s either way on this workbook) — that
+open cost is fixed COM overhead, not worth trying to shave further; only the formatting loop is worth
+optimizing.
+
 ```powershell
 Add-Type @"
 using System;
@@ -136,6 +150,31 @@ using System.Runtime.InteropServices;
 public class ExcelComWin32 {
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+}
+public static class XlsxDumpHelper {
+    public static string FormatSheet(object vals, int rows, int cols) {
+        var sb = new System.Text.StringBuilder();
+        object[,] arr = vals as object[,];
+        for (int r = 1; r <= rows; r++) {
+            var parts = new System.Collections.Generic.List<string>();
+            for (int c = 1; c <= cols; c++) {
+                object v;
+                if (arr == null) v = vals;
+                else if (rows == 1) v = arr[1, c];
+                else if (cols == 1) v = arr[r, 1];
+                else v = arr[r, c];
+                if (v != null) {
+                    string s = Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture);
+                    if (s.Length > 0) parts.Add("[" + r + "," + c + "]=" + s);
+                }
+            }
+            if (parts.Count > 0) {
+                sb.Append(string.Join(" | ", parts));
+                sb.Append("\r\n");
+            }
+        }
+        return sb.ToString();
+    }
 }
 "@
 
@@ -175,20 +214,8 @@ foreach ($ws in $wb.Worksheets) {
     $rows = [Math]::Min($used.Rows.Count, 3000)
     $cols = [Math]::Min($used.Columns.Count, 160)
     $vals = $used.Value2
-    $sb = New-Object System.Text.StringBuilder
-    for ($r=1; $r -le $rows; $r++) {
-        $line = New-Object System.Collections.Generic.List[string]
-        for ($c=1; $c -le $cols; $c++) {
-            $v = $null
-            if ($rows -eq 1 -and $cols -eq 1) { $v = $vals }
-            elseif ($rows -eq 1) { $v = $vals[1,$c] }
-            elseif ($cols -eq 1) { $v = $vals[$r,1] }
-            else { $v = $vals[$r,$c] }
-            if ($v -ne $null -and "$v" -ne "") { $line.Add("[$r,$c]=$v") }
-        }
-        if ($line.Count -gt 0) { [void]$sb.AppendLine(($line -join " | ")) }
-    }
-    [System.IO.File]::WriteAllText($file, $sb.ToString(), [System.Text.Encoding]::UTF8)
+    $text = [XlsxDumpHelper]::FormatSheet($vals, $rows, $cols)
+    [System.IO.File]::WriteAllText($file, $text, [System.Text.Encoding]::UTF8)
 }
 $wb.Close($false)
 $excel.Quit()
@@ -308,6 +335,31 @@ public class ExcelComWin32Cache {
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 }
+public static class XlsxDumpHelperCache {
+    public static string FormatSheet(object vals, int rows, int cols) {
+        var sb = new System.Text.StringBuilder();
+        object[,] arr = vals as object[,];
+        for (int r = 1; r <= rows; r++) {
+            var parts = new System.Collections.Generic.List<string>();
+            for (int c = 1; c <= cols; c++) {
+                object v;
+                if (arr == null) v = vals;
+                else if (rows == 1) v = arr[1, c];
+                else if (cols == 1) v = arr[r, 1];
+                else v = arr[r, c];
+                if (v != null) {
+                    string s = Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture);
+                    if (s.Length > 0) parts.Add("[" + r + "," + c + "]=" + s);
+                }
+            }
+            if (parts.Count > 0) {
+                sb.Append(string.Join(" | ", parts));
+                sb.Append("\r\n");
+            }
+        }
+        return sb.ToString();
+    }
+}
 "@
     $preExistingExcelPids = @((Get-Process EXCEL -ErrorAction SilentlyContinue).Id)
     $excel = New-Object -ComObject Excel.Application
@@ -345,20 +397,8 @@ public class ExcelComWin32Cache {
         $rows = [Math]::Min($used.Rows.Count, 3000)
         $cols = [Math]::Min($used.Columns.Count, 160)
         $vals = $used.Value2
-        $sb = New-Object System.Text.StringBuilder
-        for ($r = 1; $r -le $rows; $r++) {
-            $line = New-Object System.Collections.Generic.List[string]
-            for ($c = 1; $c -le $cols; $c++) {
-                $v = $null
-                if ($rows -eq 1 -and $cols -eq 1) { $v = $vals }
-                elseif ($rows -eq 1) { $v = $vals[1, $c] }
-                elseif ($cols -eq 1) { $v = $vals[$r, 1] }
-                else { $v = $vals[$r, $c] }
-                if ($v -ne $null -and "$v" -ne "") { $line.Add("[$r,$c]=$v") }
-            }
-            if ($line.Count -gt 0) { [void]$sb.AppendLine(($line -join " | ")) }
-        }
-        [System.IO.File]::WriteAllText($file, $sb.ToString(), [System.Text.Encoding]::UTF8)
+        $text = [XlsxDumpHelperCache]::FormatSheet($vals, $rows, $cols)
+        [System.IO.File]::WriteAllText($file, $text, [System.Text.Encoding]::UTF8)
         Write-Output "$($ws.Name)`t$file"
     }
     $wb.Close($false)
@@ -460,6 +500,31 @@ public class ExcelComWin32Batch {
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 }
+public static class XlsxDumpHelperBatch {
+    public static string FormatSheet(object vals, int rows, int cols) {
+        var sb = new System.Text.StringBuilder();
+        object[,] arr = vals as object[,];
+        for (int r = 1; r <= rows; r++) {
+            var parts = new System.Collections.Generic.List<string>();
+            for (int c = 1; c <= cols; c++) {
+                object v;
+                if (arr == null) v = vals;
+                else if (rows == 1) v = arr[1, c];
+                else if (cols == 1) v = arr[r, 1];
+                else v = arr[r, c];
+                if (v != null) {
+                    string s = Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture);
+                    if (s.Length > 0) parts.Add("[" + r + "," + c + "]=" + s);
+                }
+            }
+            if (parts.Count > 0) {
+                sb.Append(string.Join(" | ", parts));
+                sb.Append("\r\n");
+            }
+        }
+        return sb.ToString();
+    }
+}
 "@
     $preExistingExcelPids = @((Get-Process EXCEL -ErrorAction SilentlyContinue).Id)
     $excel = New-Object -ComObject Excel.Application
@@ -498,20 +563,8 @@ public class ExcelComWin32Batch {
             $rows = [Math]::Min($used.Rows.Count, 3000)
             $cols = [Math]::Min($used.Columns.Count, 160)
             $vals = $used.Value2
-            $sb = New-Object System.Text.StringBuilder
-            for ($r = 1; $r -le $rows; $r++) {
-                $line = New-Object System.Collections.Generic.List[string]
-                for ($c = 1; $c -le $cols; $c++) {
-                    $v = $null
-                    if ($rows -eq 1 -and $cols -eq 1) { $v = $vals }
-                    elseif ($rows -eq 1) { $v = $vals[1, $c] }
-                    elseif ($cols -eq 1) { $v = $vals[$r, 1] }
-                    else { $v = $vals[$r, $c] }
-                    if ($v -ne $null -and "$v" -ne "") { $line.Add("[$r,$c]=$v") }
-                }
-                if ($line.Count -gt 0) { [void]$sb.AppendLine(($line -join " | ")) }
-            }
-            [System.IO.File]::WriteAllText($file, $sb.ToString(), [System.Text.Encoding]::UTF8)
+            $text = [XlsxDumpHelperBatch]::FormatSheet($vals, $rows, $cols)
+            [System.IO.File]::WriteAllText($file, $text, [System.Text.Encoding]::UTF8)
             Write-Output "$($ws.Name)`t$file"
         }
         $wb.Close($false)
