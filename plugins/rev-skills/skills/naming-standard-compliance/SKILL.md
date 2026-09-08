@@ -40,10 +40,15 @@ the user's own live Excel session, the strikethrough-exclusion scan, and the ref
 
 Read `_shared/xlsx-excel-com-dump.md` first for how to dump `.xlsx` sheets to text
 via PowerShell + Excel COM (no Python/Node available here) — including its "Excluding
-struck-through / grayed-out rows from review" section. An ID string that's struck through or grayed
-out in the source sheet is marked for deletion, not a live ID to validate — run that section's
-targeted formatting scan before extracting IDs, and drop any flagged cell rather than checking it
-against the numbering rule.
+struck-through / grayed-out rows from review" section. **Deleted IDs are already gone from the dump,
+so do NOT run a formatting scan of your own** — every ID string you can see is a live one to
+validate against the numbering rule.
+
+Two consequences worth holding onto. First, a partially-struck cell arrives as its live remainder,
+so validate exactly the string you see and never reconstruct the raw one from
+`_DELETED_DIGEST.txt` — a raw-text check once reported `"GSXJC205A"` as a malformed screen ID when
+only the `X` was struck and the live text `GSJC205A` was correct. Second, an ID that appears only in
+the digest is retired, not a numbering violation: report neither its format nor its absence.
 
 ## ID rules (from "各ID採番" — re-verify against the live sheet, this is a summary)
 

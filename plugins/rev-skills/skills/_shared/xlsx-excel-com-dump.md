@@ -61,12 +61,22 @@ identical file. Confirmed real waste: a review of `XJC_ｼｽﾃﾑ共通設計�
 3 agents each re-dump the same 999-row sheet because their prompts didn't say to reuse an existing
 dump.
 
-Instead: before launching the batch, run the bulk `Value2` dump (per "The dump script" below) once
-yourself against every sheet, and pass the resulting `.txt` file paths into each agent's prompt
-("read `<path>` for sheet X — don't re-dump it"). Each agent still needs its own live Excel COM
-access for anything formatting-based (strikethrough/gray-color, font-size/merge, per-character
-DBNull) — a text dump can't carry those — so only the bulk `Value2` pass is worth sharing; don't try
-to coordinate the formatting scans across agents too, that costs more than it saves.
+Instead: before launching the batch, run the live dump (per "The dump script" below) once yourself
+against every sheet, and pass the resulting `.txt` file paths into each agent's prompt ("read
+`<path>` for sheet X — don't re-dump it").
+
+**The dump script already applies strikethrough and gray-out, so a shared dump now carries
+everything all but one skill needs — no agent should run its own strikethrough/gray scan.** Struck
+cells are absent from the `.txt` entirely and partially-struck cells carry only their live text, so
+"is this row still live?" is answered by whether it appears at all. Removed content is preserved
+separately in `_DELETED_DIGEST.txt` for the one check that needs it (see "Excluding struck-through /
+grayed-out rows from review" below). Measured on `SXJCB147_処置指示発行(ｻﾌﾞﾌﾟﾛ).xlsx` (7 sheets): the
+old shape cost ~155k tokens per agent (raw dump ~105k + strikethrough scan ~49k); the live dump
+alone is ~89k (**-43%**), and live + digest is ~117k (-25%). Multiply that by 5-6 parallel agents.
+
+The one remaining exception is `design-doc-formatting-consistency`, which needs `Font.Size` and
+`MergeCells` — those still require live COM and are its own concern. Don't try to coordinate that
+scan across agents; it costs more than it saves, and only one skill reads it.
 
 ## The dump script
 
@@ -76,6 +86,29 @@ timeout on any sheet with more than a few hundred cells), cap rows/cols since so
 bloated UsedRange from stray formatting far beyond the real content, and write one compact text
 file per sheet with `[row,col]=value` tokens (skips empty cells, keeps coordinates for citing back
 to the source file).
+
+**The dump is a *live* dump: strikethrough and gray-out are resolved while the workbook is open, not
+left for each agent to redo.** A fully-struck (or gray) cell is omitted from the `.txt`; a cell with
+mixed struck/unstruck characters is written with only its live text; everything removed is written
+to a separate `_DELETED_DIGEST.txt`. This is what makes the shared dump self-sufficient — see
+"Orchestrating session" above for why, and "Excluding struck-through / grayed-out rows from review"
+below for what the digest is for.
+
+Getting that without paying per-cell COM costs needs a **three-level cascade**, because
+`Font.Strikethrough`/`Font.Color` return `DBNull` when a range is mixed and a concrete value when it
+is uniform:
+
+1. Ask the whole `UsedRange` once. If it comes back "clean" (`Strikethrough = False` and a
+   non-gray uniform `Color`), the sheet has nothing to strip — write the plain `Value2` dump and
+   move on with **zero** extra COM calls. This is the common case for most sheets.
+2. Otherwise ask each row once, over just that row's non-empty column span (3 COM calls per row).
+   Rows that come back clean are skipped wholesale.
+3. Only for rows that are struck or mixed, walk that row's non-empty cells; and only for cells that
+   are themselves `DBNull` do the per-character `Characters(i,1)` reconstruction.
+
+Measured on `SXJCB147_処置指示発行(ｻﾌﾞﾌﾟﾛ).xlsx` (7 sheets, 1089-row worst case, ~2,000 struck and
+~390 partially-struck cells): 65s end to end, well inside a 600s timeout. Raise the Bash/PowerShell
+timeout for this step rather than skipping the cascade.
 
 **Skip 詳細設計書* and *画面ｲﾒｰｼﾞ* sheets — don't dump their content at all.** Confirmed across every
 REV skill's own instructions: 5 of the 6 single-program skills explicitly say "don't read/dump
@@ -110,81 +143,203 @@ only the formatting loop is worth optimizing.
 ```powershell
 Add-Type @"
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 public class ExcelComWin32 {
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 }
 public static class XlsxDumpHelper {
-    public static string FormatSheet(object vals, int rows, int cols) {
+    static string Cell(object[,] arr, object vals, int r, int c, int rows, int cols) {
+        object v;
+        if (arr == null) v = vals;
+        else if (rows == 1) v = arr[1, c];
+        else if (cols == 1) v = arr[r, 1];
+        else v = arr[r, c];
+        if (v == null) return null;
+        return Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture);
+    }
+    // Non-empty column indices for one row — lets the scan walk only cells that have content.
+    public static List<int> NonEmptyCols(object vals, int r, int rows, int cols) {
+        var list = new List<int>();
+        object[,] arr = vals as object[,];
+        for (int c = 1; c <= cols; c++) {
+            string s = Cell(arr, vals, r, c, rows, cols);
+            if (s != null && s.Length > 0) list.Add(c);
+        }
+        return list;
+    }
+    // dead = coords to omit entirely; live = coords whose text is replaced by its unstruck remainder.
+    public static string FormatSheetLive(object vals, int rows, int cols,
+                                         HashSet<long> dead, Dictionary<long,string> live) {
         var sb = new System.Text.StringBuilder();
         object[,] arr = vals as object[,];
         for (int r = 1; r <= rows; r++) {
-            var parts = new System.Collections.Generic.List<string>();
+            var parts = new List<string>();
             for (int c = 1; c <= cols; c++) {
-                object v;
-                if (arr == null) v = vals;
-                else if (rows == 1) v = arr[1, c];
-                else if (cols == 1) v = arr[r, 1];
-                else v = arr[r, c];
-                if (v != null) {
-                    string s = Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture);
-                    if (s.Length > 0) parts.Add("[" + r + "," + c + "]=" + s);
-                }
+                long key = ((long)r << 20) | (long)c;
+                if (dead.Contains(key)) continue;
+                string s = live.ContainsKey(key) ? live[key] : Cell(arr, vals, r, c, rows, cols);
+                if (s != null && s.Length > 0) parts.Add("[" + r + "," + c + "]=" + s);
             }
-            if (parts.Count > 0) {
-                sb.Append(string.Join(" | ", parts));
-                sb.Append("\r\n");
-            }
+            if (parts.Count > 0) { sb.Append(string.Join(" | ", parts)); sb.Append("\r\n"); }
         }
         return sb.ToString();
     }
 }
 "@
 
-$out = "<scratchpad dir>"
+$out    = "<scratchpad dir>"
+$path   = "<absolute path to the target workbook>"
+$prefix = "<program id>"
+# Sheet scoping. $null = every visible sheet. Set it when the user scopes the REV, e.g.
+# @("表紙*","機能定義書*","帳票設計書*"). Hidden sheets (bk_ backups etc.) are out of scope by default.
+$IncludeSheetPatterns = $null
+$IncludeHiddenSheets  = $false
+
+function Test-Gray([double]$argb) {
+    $r = [int]$argb -band 0xFF; $g = ([int]$argb -shr 8) -band 0xFF; $b = ([int]$argb -shr 16) -band 0xFF
+    return (($r -eq $g) -and ($g -eq $b) -and ($r -gt 80) -and ($r -lt 220))
+}
+
 # Record every EXCEL.EXE PID that already exists BEFORE launching our own instance. On this
 # environment, `New-Object -ComObject Excel.Application` has been observed to sometimes attach to
 # the user's own already-running interactive Excel process instead of spawning a genuinely new one
 # (a Running-Object-Table quirk). If that happens and we later blindly call $excel.Quit(), it closes
 # the user's ENTIRE real Excel session — including unrelated workbooks they had open — without
-# saving. This bit it us once already: a REV skill's dump step silently attached to the user's
-# session and Quit() force-closed a workbook they had open for unrelated work, mid-dump.
+# saving. This bit us once already: a REV skill's dump step silently attached to the user's session
+# and Quit() force-closed a workbook they had open for unrelated work, mid-dump.
 $preExistingExcelPids = @((Get-Process EXCEL -ErrorAction SilentlyContinue).Id)
 $excel = New-Object -ComObject Excel.Application
 $excel.Visible = $false
 $excel.DisplayAlerts = $false
-# Record the PID of THIS Excel instance only, via its (hidden) main window handle — never kill
-# by process name later, since that would also hit Excel windows the user has open for other work.
 [uint32]$excelComPid = 0
 [ExcelComWin32]::GetWindowThreadProcessId([IntPtr]$excel.Hwnd, [ref]$excelComPid) | Out-Null
-# CRITICAL: if the PID we got back was already running before we called New-Object, we attached to
-# the user's live session rather than creating a new hidden one. Abort immediately — do NOT proceed
-# to open/close/Quit anything on this $excel object, since every one of those calls would act on the
-# user's real, visible Excel instance and their other open workbooks.
 if ($preExistingExcelPids -contains $excelComPid) {
-    throw "Excel COM automation attached to the user's existing Excel process (PID $excelComPid) instead of creating a new instance. Aborting without calling Open/Close/Quit on it — ask the user to close their other Excel windows first, or investigate why New-Object is reusing the running instance."
+    throw "Excel COM automation attached to the user's existing Excel process (PID $excelComPid) instead of creating a new instance. Aborting without calling Open/Close/Quit on it — ask the user to close their other Excel windows first."
 }
 $wb = $excel.Workbooks.Open($path, $true, $true)   # ReadOnly, no update-links prompt
+
+$deleted       = New-Object System.Collections.Generic.List[object]
 $skippedSheets = @()
+$summary       = @()
+
 foreach ($ws in $wb.Worksheets) {
-    if ($ws.Name -like '詳細設計*' -or $ws.Name -like '*画面ｲﾒｰｼﾞ*') {
-        $usedSkip = $ws.UsedRange
-        $skippedSheets += "$($ws.Name): rows=$($usedSkip.Rows.Count) cols=$($usedSkip.Columns.Count) (skipped — out of scope for every REV skill; not dumped)"
+    $n = $ws.Name
+    if (-not $IncludeHiddenSheets -and $ws.Visible -ne -1) { continue }
+    if ($IncludeSheetPatterns) {
+        $hit = $false
+        foreach ($pat in $IncludeSheetPatterns) { if ($n -like $pat) { $hit = $true; break } }
+        if (-not $hit) { continue }
+    }
+    if ($n -like '詳細設計*' -or $n -like '*画面ｲﾒｰｼﾞ*') {
+        $u = $ws.UsedRange
+        $skippedSheets += "$n : rows=$($u.Rows.Count) cols=$($u.Columns.Count) (skipped — out of scope for every REV skill; not dumped)"
         continue
     }
-    $file = Join-Path $out ("<prefix>_" + ($ws.Name -replace '[\\/:*?"<>|]','_') + ".txt")
+
     $used = $ws.UsedRange
     $rows = [Math]::Min($used.Rows.Count, 3000)
-    $cols = [Math]::Min($used.Columns.Count, 160)
+    $cols = [Math]::Min($used.Columns.Count, 220)
     $vals = $used.Value2
-    $text = [XlsxDumpHelper]::FormatSheet($vals, $rows, $cols)
-    [System.IO.File]::WriteAllText($file, $text, [System.Text.Encoding]::UTF8)
+    $dead    = New-Object 'System.Collections.Generic.HashSet[long]'
+    $liveMap = New-Object 'System.Collections.Generic.Dictionary[long,string]'
+    $nDead = 0; $nPart = 0
+
+    # Level 1 — one question for the whole sheet. Clean sheets cost zero further COM calls.
+    $wholeStrike = $used.Font.Strikethrough
+    $wholeColor  = $used.Font.Color
+    $sheetClean  = ($wholeStrike -isnot [System.DBNull]) -and ($wholeStrike -eq $false) -and
+                   ($wholeColor  -isnot [System.DBNull]) -and (-not (Test-Gray $wholeColor))
+    if (-not $sheetClean) {
+        for ($r = 1; $r -le $rows; $r++) {
+            $cl = [XlsxDumpHelper]::NonEmptyCols($vals, $r, $rows, $cols)
+            if ($cl.Count -eq 0) { continue }
+            # Level 2 — one question per row, over that row's non-empty span only.
+            $rowRange = $ws.Range($ws.Cells.Item($r, $cl[0]), $ws.Cells.Item($r, $cl[$cl.Count - 1]))
+            $rs = $rowRange.Font.Strikethrough
+            $rc = $rowRange.Font.Color
+            $drill = ($rs -is [System.DBNull]) -or ($rs -eq $true) -or
+                     ($rc -is [System.DBNull]) -or (Test-Gray $rc)
+            if (-not $drill) { continue }
+            # Level 3 — per cell, and per character only where the cell itself is mixed.
+            foreach ($c in $cl) {
+                $cell = $ws.Cells.Item($r, $c)
+                $s    = $cell.Font.Strikethrough
+                $col  = $cell.Font.Color
+                $isGray = (-not ($col -is [System.DBNull])) -and (Test-Gray $col)
+                $key = (([int64]$r) -shl 20) -bor ([int64]$c)
+                if ($s -is [System.DBNull]) {
+                    $raw = "$($cell.Value2)"; $lv = ""
+                    for ($i = 1; $i -le $raw.Length; $i++) {
+                        $ch = $cell.Characters($i, 1)
+                        if (-not $ch.Font.Strikethrough) { $lv += $ch.Text }
+                    }
+                    if ($lv.Trim().Length -eq 0) {
+                        [void]$dead.Add($key); $nDead++
+                        $deleted.Add([PSCustomObject]@{S=$n; R=$r; C=$c; Kind='DEL'; Text=$raw})
+                    } else {
+                        $liveMap[$key] = $lv; $nPart++
+                        $deleted.Add([PSCustomObject]@{S=$n; R=$r; C=$c; Kind='PART'; Text="raw='$raw' live='$lv'"})
+                    }
+                } elseif (($s -eq $true) -or $isGray) {
+                    [void]$dead.Add($key); $nDead++
+                    $kind = if ($s -eq $true) { 'DEL' } else { 'GRAY' }
+                    $deleted.Add([PSCustomObject]@{S=$n; R=$r; C=$c; Kind=$kind; Text="$($cell.Value2)"})
+                }
+            }
+        }
+    }
+
+    $safe = ($n -replace '[\\/:*?"<>|]','_')
+    $text = [XlsxDumpHelper]::FormatSheetLive($vals, $rows, $cols, $dead, $liveMap)
+    [System.IO.File]::WriteAllText((Join-Path $out ($prefix + "_" + $safe + ".txt")), $text, [System.Text.Encoding]::UTF8)
+    $summary += "$n`t$($used.Rows.Count)x$($used.Columns.Count)`tdead=$nDead`tpartial=$nPart"
 }
 $wb.Close($false)
 $excel.Quit()
 [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
-$skippedSheets -join "`n"   # review this: a suspiciously large row count on a "skipped" 詳細設計書 sheet is a signal naming-standard-compliance may need to check its content directly
+
+# _DELETED_DIGEST.txt — removed content, grouped into contiguous row blocks. Structural filler is
+# counted but not listed: a bare row/condition number, a hyphen placeholder, a comparison operator.
+# Everything else is listed WHATEVER ITS LENGTH. Do not "simplify" this back to a character-count
+# threshold — a length rule was tried first (drop anything under 4 chars) and silently swallowed 249
+# of 761 omissions on SXJCB147, because this project's load-bearing tokens are routinely 1-3
+# characters: block references like (5), footnote markers like ※2, query aliases Y/Z/A/C, and plain
+# words such as 引数 / ﾗﾝｸ / 日付 / 参照先. Those are exactly what an asymmetry finding hangs on.
+# The three filler classes below were verified safe to drop on that same workbook: all 248 numerics
+# sat in No. columns (never in a 検索条件 right-hand side, so no literal value is lost), all 229
+# hyphens and all 35 operators belonged to rows deleted in full, where the row's real content is
+# already listed. Note this leaves ー (U+30FC, the katakana prolonged mark) out of the hyphen class
+# on purpose — it is a letter, not a dash.
+$lines = New-Object System.Collections.Generic.List[string]
+foreach ($grp in $deleted | Group-Object S) {
+    $items = $grp.Group | Sort-Object R, C
+    $blockStart = $null; $prev = $null
+    $buf = New-Object System.Collections.Generic.List[object]
+    $flush = {
+        if ($buf.Count -eq 0) { return }
+        $subst = @($buf | Where-Object {
+            $t = $_.Text.Trim()
+            -not ($t -match '^[0-9]+$' -or $t -match '^[-‐‑–—―－]$' -or $t -match '^[=<>≠≦≧≤≥]+$')
+        })
+        $short = $buf.Count - $subst.Count
+        $lines.Add("=== $($grp.Name) rows $blockStart-$prev ($($buf.Count) cells) ===")
+        foreach ($it in $subst) { $lines.Add("  [$($it.R),$($it.C)] $($it.Kind): $($it.Text)") }
+        if ($short -gt 0) { $lines.Add("  (+ $short filler cells omitted)") }
+        $buf.Clear()
+    }
+    foreach ($it in $items) {
+        if ($null -eq $blockStart) { $blockStart = $it.R }
+        elseif ($it.R - $prev -gt 2) { & $flush; $blockStart = $it.R }
+        $prev = $it.R; $buf.Add($it)
+    }
+    & $flush
+}
+[System.IO.File]::WriteAllText((Join-Path $out "_DELETED_DIGEST.txt"), ($lines -join "`r`n"), [System.Text.Encoding]::UTF8)
+
+$summary -join "`n"
+$skippedSheets -join "`n"   # a suspiciously large row count on a skipped 詳細設計書 sheet is a signal naming-standard-compliance may need to check its content directly
 ```
 
 ## Cross-session cache for reference/master files (not the target workbook)
@@ -556,6 +711,18 @@ per table.
 
 ## Excluding struck-through / grayed-out rows from review
 
+**This is already done for you. Do not run your own strikethrough or gray-out scan.** The dump
+script resolves both while the workbook is open: fully-struck and gray cells are absent from the
+`.txt`, and partially-struck cells carry only their live text. A row you can see in the dump is
+live; a row that was struck simply is not there. Re-deriving this per agent was the single largest
+source of duplicated cost (~49k tokens × 5-6 agents) **and** of false findings — see "What this
+prevents" below.
+
+Read this section to understand what the dump has already decided on your behalf, and when to reach
+for `_DELETED_DIGEST.txt`.
+
+### Why the content is excluded at all
+
 Design docs are often copied from an older workbook and edited in place. This project's writing-rule
 checklist (`01_Doc/99.共通資料/設計書記述ルール/05.設計書記述ルール_チェックリスト.xlsx`, sheet
 "ﾁｪｯｸﾘｽﾄ", item 1-5) says authors should delete struck-through rows entirely and turn red
@@ -563,154 +730,94 @@ checklist (`01_Doc/99.共通資料/設計書記述ルール/05.設計書記述�
 skipped, leaving struck-through/grayed rows still physically present. **Content marked this way is
 inactive/deleted-in-spirit and must never be treated as something the program actually
 references** — don't count it toward a "referenced columns" list, don't flag it as a
-naming/consistency violation, don't cite it as evidence of what the current design does. Skip it
-silently (a one-line "N struck-through/grayed rows skipped" note in the final report is enough — don't
-enumerate them as findings).
+naming/consistency violation, don't cite it as evidence of what the current design does. Note that
+red alone does *not* mean deleted (red is the "to-be-fixed" marker and is still live); only
+strikethrough and gray are.
 
-**Mandatory on every section you cite as evidence — never skip it for a large sheet.** A real review
-(PXJCO193) reported six tables as "used but not declared in the I/O table," entirely because the
-formatting scan was skipped on a 1000+ row sheet whose 参照ｴﾝﾃｨﾃｨ blocks were red-and-struck-through
-100+ rows deep. Sheet size is exactly why the scan matters more, not a reason to shortcut it.
+A one-line "N struck-through/grayed cells excluded at dump time" note in the final report is enough —
+never enumerate them as findings. The per-sheet `dead=`/`partial=` counts the dump script prints are
+exactly that number.
 
-**This check is just as mandatory in the opposite direction — before reporting a section as a
-"leftover that should have been deleted but wasn't cleaned up" (e.g. a stale JOIN/結合条件 block left
-over after its referenced alias was swapped to a delegated sub-block that shouldn't need one), check
-whether it is already struck through.** It's easy to run the formatting scan diligently everywhere you
-build a "used" evidence list, and still skip it on a block you're about to flag as a *missing* deletion
-— but a bulk `Value2` dump can't distinguish "still live, should be removed" from "already marked
-dead, nothing to do" any more than it can distinguish live from dead evidence. Confirmed for real on
-`XJC_ｼｽﾃﾑ共通設計書.xlsx`, sheet `ﾛｯﾄ停止ﾁｪｯｸ`, rows 829-832 (a "結合条件(A INNER JOIN B)" block left
-over after its alias B was reassigned from a real table to a delegated get-item sub-block): a review
-reported this as a live, not-yet-cleaned-up defect, but every cell in the block ([829,4] through
-[832,28]) was actually `Font.Strikethrough=True` — it had already been correctly deleted, and the
-"defect" was a pure false positive from not running the formatting check on it before writing up the
-finding.
+**An empty or near-empty live dump for a sheet is meaningful, not a dump failure.** When an entire
+更新条件表/画面設計書 sheet comes back struck top to bottom — including its own header — the correct
+read is that the **whole sheet is superseded** (commonly: an old JAGUR-era 更新条件表(<TableID>)
+sheet that a newer 更新条件表(<TableID>WF) sheet has replaced). Exclude the whole thing from the
+review and say so. Per explicit user direction, red+strikethrough always means "exclude from REV
+scope" in this project, with no exception for how broadly it is applied — do not reason your way out
+of it ("this can't be meaningful, it's on every row including the header, must be leftover noise").
+That reasoning has been tried and explicitly overruled.
 
-The bulk `Value2` dump above cannot see formatting, so this needs a second, *targeted* pass — keep it
-targeted to avoid the same per-cell-loop slowness the bulk dump avoids. Once you've identified the
-column that carries the item/label names for the section you care about, loop `Font.Strikethrough`
-and `Font.Color` over just *that one column* for the row range in play (a few hundred COM calls, not
-tens of thousands). This isn't limited to obvious "label" columns like 項目名 (更新条件表/
-ﾃｰﾌﾞﾙﾚｲｱｳﾄ) or 画面項目名 (画面設計書) — it applies just as much to the table-name column inside a
-"参照ｴﾝﾃｨﾃｨ" block (画面設計書 Ⅲ．画面表示仕様), since a struck-through query block's table
-references are exactly what gets miscounted as "actively used" if formatting isn't checked first.
-Any column you're about to cite as evidence needs this same scan before you trust it.
+### When to read `_DELETED_DIGEST.txt`
 
-**Don't re-fetch `Value2` per row to test for emptiness — you already have it from the bulk dump.**
-An earlier version of this script looped `$firstRow..$lastRow` and called `$cell.Value2` on every
-row just to decide whether to skip it, which is exactly the per-cell-COM-call cost the bulk dump
-exists to avoid, paid a second time on the same range. The bulk dump (or its `.txt` file, already
-written before this scan ever runs) already tells you precisely which rows in this column are
-non-empty — reuse that list and only spend COM calls on `Font.Strikethrough`/`Font.Color` for rows
-you already know have content:
+The digest holds what was removed, grouped into contiguous row blocks, with `DEL` (whole cell),
+`GRAY` (whole cell, gray) and `PART` (`raw=` vs `live=` for a partially-struck cell) entries. Only
+structural filler is left out — a bare row/condition number, a hyphen placeholder, a comparison
+operator — and each block still reports how many it dropped (`+ N filler cells omitted`). Short but
+meaningful cells are listed in full: `(5)`, `※2`, an alias `Y`, `引数`, `ﾗﾝｸ` and the like all
+survive the filter, because deletion asymmetries usually hang on exactly those.
 
-```powershell
-$ws = $wb.Worksheets.Item("<sheet name>")
-$col = 4          # the column holding the label text, e.g. 項目名
+Most checks never need it — they are asking "is what the doc *currently* says correct?", and the live
+dump answers that directly. Reach for the digest only when a finding turns on **what was deleted**,
+which in practice is `design-doc-internal-consistency`:
 
-# Derive the known-non-empty row list for this column from the sheet's already-dumped .txt file
-# (or from the bulk $vals array directly if still in scope from the same dump pass) — do NOT
-# rediscover it by scanning Value2 via COM again.
-$knownRows = Select-String -Path $dumpTxtPath -Pattern "\[(\d+),$col\]=" |
-    ForEach-Object { [int]$_.Matches[0].Groups[1].Value } | Sort-Object -Unique
+- A section whose counterpart was deleted while it stayed live — e.g. a ※-note whose only reference
+  was removed, or a "(通常/識別ｶｰﾄﾞ)" wording left behind after the 識別ｶｰﾄﾞ output rows were deleted.
+  The live dump shows the survivor; only the digest shows that its partner is gone.
+- A step-number or branch table with a hole in it, where the missing branch was struck rather than
+  renumbered.
+- A "削除" revision note sitting next to content that is *not* struck — a real and load-bearing
+  ambiguity (confirmed on `SXJCB147`'s `帳票設計書(RXJC042)` 検索条件 No.5, where the surrounding
+  same-day deletions *were* struck and this one was not).
 
-foreach ($r in $knownRows) {
-    $cell = $ws.Cells.Item($r, $col)
-    $strike = $cell.Font.Strikethrough
-    $argb = $cell.Font.Color            # OLE color: 0x00BBGGRR
-    $rr = $argb -band 0xFF
-    $gg = ($argb -shr 8) -band 0xFF
-    $bb = ($argb -shr 16) -band 0xFF
-    $isGray = ($rr -eq $gg) -and ($gg -eq $bb) -and ($rr -gt 80) -and ($rr -lt 220)
-    if ($strike -or $isGray) {
-        Write-Output "[$r,$col] strike=$strike gray=$isGray"
-    }
-}
-```
+If you are about to report a section as "a leftover that should have been deleted but wasn't cleaned
+up," check the digest first — it may already be marked dead, in which case there is nothing to fix.
+Confirmed for real on `XJC_ｼｽﾃﾑ共通設計書.xlsx`, sheet `ﾛｯﾄ停止ﾁｪｯｸ`, rows 829-832 (a
+"結合条件(A INNER JOIN B)" block left over after its alias B was reassigned from a real table to a
+delegated get-item sub-block): a review reported this as a live, not-yet-cleaned-up defect, but every
+cell in the block was `Font.Strikethrough=True` — it had already been correctly deleted, and the
+"defect" was a pure false positive.
 
-On a sparse column (say 20% filled over a 1000-row range), this cuts the COM-call count for this
-scan by roughly half or more compared to the old per-row `Value2` re-check — the savings scale with
-how sparse the column is, so they matter most on exactly the large sheets where this scan already
-takes the longest.
+### What this prevents
 
-Run this once per sheet you're extracting referenced items from, cross off any row number it
-reports from the row set you built from the bulk dump, then proceed with the remaining rows as
-normal.
+Every one of these was a real false finding produced by an agent doing its own scan, or skipping it:
 
-**Trust this signal even when it covers an entire column, including the header cell and rows you
-independently know are live** — per explicit user direction, red+strikethrough always means
-"exclude from Rev scope" in this project, with no exception for how broadly it's applied. Do not
-reason your way out of it ("this can't be meaningful, it's on every row including the header, must
-be leftover noise") — that reasoning has been tried and explicitly overruled. If an entire
-更新条件表/画面設計書 sheet's item column comes back red+strikethrough top to bottom, including its
-own header, the correct read is that the **whole sheet/section is marked superseded/deprecated**
-(commonly: an old JAGUR-era 更新条件表(<TableID>) sheet that a newer 更新条件表(<TableID>WF) sheet
-has replaced) — exclude the whole thing from the review and say so, rather than treating the columns
-inside it as individually-live references. Only a sheet/section with genuinely mixed formatting
-(some rows marked, neighboring rows in the same column plainly not) should be filtered row-by-row;
-a uniformly-marked sheet is excluded wholesale.
+- **Six tables reported as "used but not declared in the I/O table"** (PXJCO193), entirely because
+  the scan was skipped on a 1000+ row sheet whose 参照ｴﾝﾃｨﾃｨ blocks were red-and-struck-through 100+
+  rows deep. Sheet size was exactly why the scan mattered most, and exactly why it got shortcut.
+- **`帳票設計書(RSJC035)`'s `注意事項備考` reported as a column that doesn't exist in `TXJCM137`**
+  (`SXJCB147`, cells `F202`/`Q202`): raw text was `注意事項備考` / `A.注意事項備考`, but only
+  `注意事項` was live. TXJCM137 has `備考` and `注意事項` as separate columns — the doc was correctly
+  referencing the latter with a stale, not-fully-deleted `備考` glued on.
+- **`COUNT(A.層数層No)` reported as referencing a nonexistent column** and "fixed" to
+  `COUNT(A.層No)` (`PXJCO124_ﾛｯﾄ振向け.xlsx`, `ﾁｪｯｸ処理設計書(GXJC124A)`, `[280,17]`) — `層No` was
+  already the live text; `層数` was the struck leftover. The doc was already correct.
+- **`"GSXJC205A"` reported as a typo of the screen ID `GSJC205A`** (`PSJCO205_返品処置指示発行.xlsx`,
+  `画面設計書(GSJC205A)`, `[333,28]`) — only the `X` was struck; live text was an exact match.
+- **`③④` treated as two live entity references** (`PSJCO205`, `更新条件表(TXJCM006)`, rows 74/84/95,
+  col 16 取得元) when only `④` was live — the sheet's own row-9 legend documents the renumbering that
+  stranded `③`.
 
-**A cell's `Font.Strikethrough` can itself come back as `DBNull` (type `System.DBNull`), exactly
-like the already-documented `Font.Size` mixed-run case — this means the cell has *some* characters
-struck through and others not, not that the check failed.** This happens whenever a stale reference
-is edited in place instead of fully replaced — treating a DBNull result as "not struck" silently
-keeps the stale part as if it were still live; treating it as "struck" (per the whole-column rule
-below) would wrongly discard the live part too. Confirmed for real: `PSJCO205_返品処置指示発行.xlsx`,
-`更新条件表(TXJCM006)`, rows 74/84/95, col 16 (取得元) — raw `③④` (a renumbered circled-entity
-reference), whole-cell check DBNull, per-character inspection shows only `④` live (the sheet's own
-row-9 legend documents the renumbering that stranded `③`). Same shape in a plain column-name cell:
-`SXJCB147_処置指示発行(ｻﾌﾞﾌﾟﾛ).xlsx`, `帳票設計書(RSJC035)`, `F202`/`Q202` — raw `注意事項備考`/
-`A.注意事項備考`, only `注意事項` live; skipping the per-character check here produced a false
-"referenced column 注意事項備考 doesn't exist in TXJCM137" finding (TXJCM137 has both `備考` and
-`注意事項` as separate columns — the doc was correctly referencing the latter with a stale,
-not-fully-deleted `備考` suffix glued on). Whenever a whole-cell strikethrough check returns DBNull,
-drop to per-character inspection before trusting the cell's text as evidence:
+The last four share one shape: a **mixed-formatting cell**, where `Font.Strikethrough` returns
+`System.DBNull` rather than `True`/`False`. That is why the dump script drops to per-character
+reconstruction on exactly those cells. The trap is that `System.DBNull` interpolates into a
+PowerShell string as an *empty string* — `Write-Output "strike=$whole"` prints `strike=` whether the
+value is `False` or `DBNull` — so an ad-hoc scan can read "mixed" as "not struck, live" and never
+notice. Test the type explicitly (`-is [System.DBNull]`) and never eyeball a printed value. The dump
+script does this; a hand-rolled scan usually doesn't.
 
-```powershell
-$cell = $ws.Cells.Item($r, $c)
-$v = "$($cell.Value2)"
-$whole = $cell.Font.Strikethrough
-if ($whole -is [System.DBNull]) {
-    $clean = ""
-    for ($i = 1; $i -le $v.Length; $i++) {
-        $ch = $cell.Characters($i, 1)
-        if (-not $ch.Font.Strikethrough) { $clean += $ch.Text }
-    }
-    Write-Output "[$r,$c] mixed strikethrough: raw='$v' live-only='$clean'"
-}
-```
+### One judgment call the dump can't make for you
 
-Use only the reconstructed `live-only` text as the cell's real content (e.g. treat `④` as the sole
-source reference, not `③④`) — don't fall back to the raw `Value2` string once a cell has flagged as
-mixed.
+**Parallel `処理区分="..."の場合` (or similarly-named) branch variants inside one sheet.** A common
+shape in this project's 画面設計書 is two or more parallel sub-blocks handling different values of the
+same discriminator (e.g. `品目コード` vs `管理No`, one per branch), often followed by several more
+sub-blocks that logically belong to just one of those branches. When one branch is deprecated, the
+strikethrough frequently covers not just that one block but every subsequent block that depended on
+it too, spanning hundreds of rows and several numbered sub-sections in a row.
 
-**Test the type explicitly (`-is [System.DBNull]`) — never eyeball a printed/interpolated value.**
-`System.DBNull` interpolates into a PowerShell string as an *empty string*, indistinguishable at a
-glance from a normal blank/false result in ad-hoc output like `Write-Output "strike=$whole"` (prints
-`strike=` either way) — a review can run the whole-cell check, see nothing after `strike=`, read that
-as "not struck, live," and move on without ever hitting the DBNull branch. Confirmed for real:
-`PXJCO124_ﾛｯﾄ振向け.xlsx`, `ﾁｪｯｸ処理設計書(GXJC124A)`, `[280,17]` = `COUNT(A.層数層No)` — reported as
-referencing a nonexistent column and "fixed" to `COUNT(A.層No)`, but `層No` was already the live text
-(`層数` was the struck leftover); the doc was already correct.
-
-**This same per-character check applies just as much to a single-cell "typo"/mismatch finding as to
-reference-list evidence** — it's easy to apply diligently to referenced-column lists and still skip
-it on a cell that just looks like a misspelling at a glance. Confirmed for real:
-`PSJCO205_返品処置指示発行.xlsx`, `画面設計書(GSJC205A)`, `[333,28]` — raw `"GSXJC205A"` looks like a typo of
-the real screen ID `GSJC205A` (extra `X`), reported as a confirmed defect, but per-character
-inspection showed only the `X` struck through — live text is `"GSJC205A"`, an exact match, no defect.
-Run the per-character check on any cell before including it as a mismatch/typo finding, same as
-before building a referenced-items list.
-
-**Watch for parallel `処理区分="..."の場合` (or similarly-named) branch variants inside one sheet** —
-a common shape in this project's 画面設計書 is two or more parallel sub-blocks handling different
-values of the same discriminator (e.g. `品目コード` vs `管理No`, one per branch), often followed by
-several more sub-blocks that logically belong to just one of those branches. When one branch is
-deprecated, the strikethrough frequently covers not just that one block but every subsequent block
-that depended on it too, spanning hundreds of rows and several numbered sub-sections in a row. Seeing
-one such branch header struck through is a strong signal to check the formatting of everything until
-the next clearly-unstruck section header, rather than assuming the deprecation is scoped to just the
-one block you first noticed it on.
+In the live dump this appears as a *gap* — a discriminator with no handling. Whether that gap is a
+correct deprecation or a genuine design hole is the finding, and it needs the digest plus your own
+reading of the surrounding branch structure. `SXJCB147`'s 部門GRP="SC200"(SMD) row, left with no
+帳票 after RSJC034/RSJC036 were deleted, is the canonical example of the "genuine hole" case.
 
 ## Font-size and cell-merge irregularity detection — moved
 

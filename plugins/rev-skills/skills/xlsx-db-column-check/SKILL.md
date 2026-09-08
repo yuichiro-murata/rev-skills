@@ -61,19 +61,21 @@ Read the dumped sheets with the Read tool (not Bash cat) and look for these stan
 
 Build a per-table list: `{ table_id: [column names referenced] }`.
 
-**Before finalizing that list, exclude struck-through/grayed-out rows** — see
-`_shared/xlsx-excel-com-dump.md`'s "Excluding struck-through / grayed-out rows from review"
-section for why and how. These design docs are often copied from older (frequently JAGUR-era)
-workbooks, and rows the author marked with strikethrough or gray font are meant to be deleted, not
-active references — including them would produce false "missing column" findings against a
-reference that was never really in effect. Run the targeted single-column formatting check against
-the 項目名 column of each 更新条件表 subsection you pulled columns from, **and against the table-name
-column of every 画面設計書 "参照ｴﾝﾃｨﾃｨ" block you pulled `<alias>.<column>` references from** — a
-struck-through 参照ｴﾝﾃｨﾃｨ block means every column reference inside it (取得項目/検索条件/結合条件/
-ｿｰﾄ順) is inactive too, not just the table-name line itself, and this project's screen designs
-commonly deprecate whole multi-section ranges this way (see the shared doc's note on
-`処理区分="..."の場合` branch variants). Drop any row/block it flags, and only report a brief count
-of skipped rows rather than listing them as findings.
+**Struck-through/grayed-out rows are already excluded — do NOT run a formatting scan of your own.**
+The dump script resolves this while the workbook is open (see
+`_shared/xlsx-excel-com-dump.md`'s "Excluding struck-through / grayed-out rows from review"), so a
+deprecated 参照ｴﾝﾃｨﾃｨ block and every column reference under it (取得項目/検索条件/結合条件/ｿｰﾄ順)
+are simply absent from the `.txt`. Report a brief count of excluded cells — the dump prints
+`dead=`/`partial=` per sheet — rather than listing them.
+
+**The one thing you must still be deliberate about: a partially-struck cell arrives already reduced
+to its live text, and that live text is the column name to match.** Never reconstruct the raw string
+from `_DELETED_DIGEST.txt` and match on that. This is the single most repeated false finding in this
+skill's history — `注意事項備考` reported as "not a column in TXJCM137" when only `注意事項` was live
+(`SXJCB147`, `帳票設計書(RSJC035)`), `COUNT(A.層数層No)` "fixed" to `COUNT(A.層No)` when `層No` was
+already the live text (`PXJCO124`), and `③④` treated as two entity references when only `④` was live
+(`PSJCO205`). All three came from matching raw text; none can occur when matching what the live dump
+gives you.
 
 ### 3. Locate and dump the actual DB design files
 
