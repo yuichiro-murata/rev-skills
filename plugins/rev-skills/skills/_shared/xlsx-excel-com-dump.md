@@ -300,9 +300,18 @@ $wb.Close($false)
 $excel.Quit()
 [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
 
-# _DELETED_DIGEST.txt — removed content, grouped into contiguous row blocks. Cells whose text is
-# under 4 characters (a bare number, a circle, a hyphen, a lone marker) are counted but not listed:
-# they carry no meaning on their own and would swamp the digest.
+# _DELETED_DIGEST.txt — removed content, grouped into contiguous row blocks. Structural filler is
+# counted but not listed: a bare row/condition number, a hyphen placeholder, a comparison operator.
+# Everything else is listed WHATEVER ITS LENGTH. Do not "simplify" this back to a character-count
+# threshold — a length rule was tried first (drop anything under 4 chars) and silently swallowed 249
+# of 761 omissions on SXJCB147, because this project's load-bearing tokens are routinely 1-3
+# characters: block references like (5), footnote markers like ※2, query aliases Y/Z/A/C, and plain
+# words such as 引数 / ﾗﾝｸ / 日付 / 参照先. Those are exactly what an asymmetry finding hangs on.
+# The three filler classes below were verified safe to drop on that same workbook: all 248 numerics
+# sat in No. columns (never in a 検索条件 right-hand side, so no literal value is lost), all 229
+# hyphens and all 35 operators belonged to rows deleted in full, where the row's real content is
+# already listed. Note this leaves ー (U+30FC, the katakana prolonged mark) out of the hyphen class
+# on purpose — it is a letter, not a dash.
 $lines = New-Object System.Collections.Generic.List[string]
 foreach ($grp in $deleted | Group-Object S) {
     $items = $grp.Group | Sort-Object R, C
@@ -310,11 +319,14 @@ foreach ($grp in $deleted | Group-Object S) {
     $buf = New-Object System.Collections.Generic.List[object]
     $flush = {
         if ($buf.Count -eq 0) { return }
-        $subst = @($buf | Where-Object { $_.Text.Trim().Length -ge 4 })
+        $subst = @($buf | Where-Object {
+            $t = $_.Text.Trim()
+            -not ($t -match '^[0-9]+$' -or $t -match '^[-‐‑–—―－]$' -or $t -match '^[=<>≠≦≧≤≥]+$')
+        })
         $short = $buf.Count - $subst.Count
         $lines.Add("=== $($grp.Name) rows $blockStart-$prev ($($buf.Count) cells) ===")
         foreach ($it in $subst) { $lines.Add("  [$($it.R),$($it.C)] $($it.Kind): $($it.Text)") }
-        if ($short -gt 0) { $lines.Add("  (+ $short short cells omitted)") }
+        if ($short -gt 0) { $lines.Add("  (+ $short filler cells omitted)") }
         $buf.Clear()
     }
     foreach ($it in $items) {
@@ -738,8 +750,11 @@ That reasoning has been tried and explicitly overruled.
 ### When to read `_DELETED_DIGEST.txt`
 
 The digest holds what was removed, grouped into contiguous row blocks, with `DEL` (whole cell),
-`GRAY` (whole cell, gray) and `PART` (`raw=` vs `live=` for a partially-struck cell) entries. Cells
-whose text is under 4 characters are counted but not listed.
+`GRAY` (whole cell, gray) and `PART` (`raw=` vs `live=` for a partially-struck cell) entries. Only
+structural filler is left out — a bare row/condition number, a hyphen placeholder, a comparison
+operator — and each block still reports how many it dropped (`+ N filler cells omitted`). Short but
+meaningful cells are listed in full: `(5)`, `※2`, an alias `Y`, `引数`, `ﾗﾝｸ` and the like all
+survive the filter, because deletion asymmetries usually hang on exactly those.
 
 Most checks never need it — they are asking "is what the doc *currently* says correct?", and the live
 dump answers that directly. Reach for the digest only when a finding turns on **what was deleted**,
