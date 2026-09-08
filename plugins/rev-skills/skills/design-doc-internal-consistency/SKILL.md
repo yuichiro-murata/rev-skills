@@ -42,12 +42,26 @@ the user's own live Excel session, the strikethrough-exclusion scan, and the ref
 
 Read `_shared/xlsx-excel-com-dump.md` first for how to dump `.xlsx` sheets to text
 via PowerShell + Excel COM (no Python/Node available here) — including its "Excluding
-struck-through / grayed-out rows from review" section. These docs are often copied from older
-workbooks, and rows/items an author struck through or grayed out are meant to be deleted, not
-active content. Before diffing any of the checks below, run that section's targeted formatting scan
-against the item/label column of each section you're pulling from (画面項目, 項目名, 画面項目名,
-etc.) and drop any flagged row — otherwise leftover crossed-out entries produce false "used but not
-declared" / "missing from dictionary" findings.
+struck-through / grayed-out rows from review" section. **The dump script already dropped
+struck-through and grayed-out content, so do NOT run a formatting scan of your own** — every row you
+can see is live, which is what makes the "used but not declared" / "missing from dictionary" diffs
+below trustworthy without any extra work.
+
+**Of the six single-program checks, this is the one that genuinely needs `_DELETED_DIGEST.txt`.**
+Its highest-value findings are asymmetries — one half of a pair edited while the other was left
+behind — and the live dump only ever shows you the survivor. Read the digest when a check turns on
+what was *removed*:
+
+- a ※-note, a branch table row, or a step number whose counterpart was deleted, leaving a dangling
+  definition or a hole in a sequence;
+- prose that still advertises an output/behaviour whose implementing rows were deleted (confirmed on
+  `SXJCB147`: Ⅰ．機能概要 still said 識別ｶｰﾄﾞ was printed after every 識別ｶｰﾄﾞ output row was struck);
+- a "削除" revision note sitting beside content that is *not* struck — genuinely ambiguous, and worth
+  reporting as a judgment call rather than resolving yourself.
+
+Conversely, do not report something as "a leftover that should have been deleted" without checking
+the digest first: it may already be marked dead, in which case there is nothing to fix. That exact
+false finding has been made before (`XJC_ｼｽﾃﾑ共通設計書.xlsx`, `ﾛｯﾄ停止ﾁｪｯｸ`, rows 829-832).
 
 **Don't dump or read `詳細設計書` sheets.** None of the 7 checks below reference detail-design
 content — they all draw from 機能定義書/画面設計書/ﾁｪｯｸ処理設計書/更新条件表 only. Across every

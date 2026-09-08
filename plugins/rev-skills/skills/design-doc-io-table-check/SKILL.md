@@ -31,12 +31,11 @@ the user's own live Excel session, the strikethrough-exclusion scan, and the ref
 
 Read `_shared/xlsx-excel-com-dump.md` first for how to dump `.xlsx` sheets to text
 via PowerShell + Excel COM (no Python/Node available here) — including its "Excluding
-struck-through / grayed-out rows from review" section. These docs are often copied from older
-workbooks, and rows/items an author struck through or grayed out are meant to be deleted, not
-active content. Before diffing, run that section's targeted formatting scan against the item/label
-column of each section you're pulling from (画面項目, 項目名, 画面項目名, 参照ｴﾝﾃｨﾃｨ table-name
-column, etc.) and drop any flagged row — otherwise leftover crossed-out entries produce false "used
-but not declared" findings.
+struck-through / grayed-out rows from review" section. **The dump script already resolves
+strikethrough and gray-out: deprecated rows are absent from the `.txt` and partially-struck cells
+carry only their live text, so do NOT run a formatting scan of your own.** Anything visible in the
+dump is live evidence. Removed content lives in `_DELETED_DIGEST.txt`, which this check needs only
+to explain why a declared table has no live usage left.
 
 **Don't dump or read `詳細設計書` sheets.** This check draws from 機能定義書/画面設計書/
 ﾁｪｯｸ処理設計書/更新条件表/帳票設計書 only. Across every program reviewed so far, 詳細設計書 has
@@ -48,8 +47,10 @@ nothing lost.
 **Quick reference — the checks in order (each detailed below with confirmed real-world examples):**
 
 1. 機能定義書「Ⅲ．入出力定義」often has TWO table-ID sources (a live CRUD summary table + a separate
-   INPUT/OUTPUT breakdown table right below it) — check the breakdown table's own strikethrough
-   formatting before trusting it; it's frequently dead boilerplate.
+   INPUT/OUTPUT breakdown table right below it). The breakdown table is frequently dead boilerplate,
+   in which case the live dump won't contain it at all — so treat whatever the dump *does* show as
+   the authoritative declaration set, and never resurrect IDs from `_DELETED_DIGEST.txt` as
+   declarations.
 2. Collect every table ID/alias from: Ⅲ．入出力定義 itself, 画面設計書's 参照ｴﾝﾃｨﾃｨ blocks (or the
    batch/report-program equivalents), AND every 更新条件表 sheet's *body* (not just its header) —
    the 取得内容/取得条件 column often cites other tables by Japanese name only, never by ID, so
@@ -57,9 +58,9 @@ nothing lost.
 3. Follow every `※<共通設計書名>.<項目> 参照` delegation line to its actual target sheet (check both
    the WG-specific sheet and the shared sheet in the common-design workbook) — a table only reached
    through a delegated block still counts as used.
-4. Before counting any 参照ｴﾝﾃｨﾃｨ block as usage evidence, run the struck-through/grayed-out
-   formatting scan on it first — run this unconditionally, on small blocks too, in both diff
-   directions (confirming "used" and confirming "not used" both need it).
+4. Deprecated blocks are already gone from the shared live dump — **do not run your own
+   struck-through/grayed-out scan.** A 参照ｴﾝﾃｨﾃｨ block visible in the dump is live evidence; a
+   deprecated one is simply absent, in both diff directions.
 5. Require an **exact** ID string match throughout (never prefix/substring) — suffix variants
    (`WF`, numeric suffixes like `_31`) are different tables from their base ID, and this applies to
    locating the DB layout file too, not just the diff itself.
@@ -82,17 +83,17 @@ source workbook it was copied from — while the CRUD summary table right above 
 sheet is fully live. Confirmed for real on `PXJCO134_流動停止解除.xlsx`: the OUTPUT breakdown
 table at rows 58-64 was entirely red+struck (including a row citing `TXJCM502`/`TXJCA301`, whose
 apparent "duplicate No.5" numbering was flagged as a defect by a review that hadn't checked this
-block's formatting — a false finding, since the whole block is dead). The same shape (an entirely
-struck INPUT/OUTPUT breakdown table, unrelated to the live CRUD summary table above it) was also
-the root of a separate finding on `PXJCB102_製造ｵｰﾀﾞｰ完了処理.xlsx`. **Whenever "Ⅲ．入出力定義"
-is in scope, check the INPUT/OUTPUT breakdown table's formatting as its own explicit step — don't
-assume it's live just because the CRUD summary table above it is, and don't assume a mandate to
-"check formatting before citing 参照ｴﾝﾃｨﾃｨ evidence" (elsewhere in this section) already covers
-it, since this breakdown table is a different structure in a different sheet (機能定義書 itself,
-not 画面設計書) that is easy to mentally file under "not what that rule meant."** If found entirely
-struck, exclude it wholesale from every check in this section (don't cite its rows as I/O evidence,
-don't flag numbering/content oddities inside it) and just note in the report that it's dead
-boilerplate, not a finding to enumerate as a defect.
+block's formatting — a false finding, since the whole block is dead). The same shape was also the
+root of a separate finding on `PXJCB102_製造ｵｰﾀﾞｰ完了処理.xlsx`, and again on
+`SXJCB147_処置指示発行(ｻﾌﾞﾌﾟﾛ).xlsx` (rows 63-86, a fully struck "1.INPUT"/"2.OUTPUT" pair citing a
+dozen tables that appear nowhere else live).
+
+**With a live dump this resolves itself: a dead breakdown table is simply not in the `.txt`.** So
+the practical rule is now the reverse of the old one — if 機能定義書 shows only one table-ID block
+where you expected two, that is the expected outcome, not a dump failure or a missing section. Do
+not go looking for the breakdown table in `_DELETED_DIGEST.txt` and reinstate its IDs as
+declarations, and do not report numbering/content oddities inside it; a one-line note that the
+breakdown table is dead boilerplate is all it warrants.
 
 Collect every table ID mentioned in "Ⅲ．入出力定義" (機能定義書 sheet). Separately collect every
 table ID/alias used in 画面設計書's "参照ｴﾝﾃｨﾃｨ" blocks (or, for a batch program with no
@@ -130,22 +131,22 @@ set may not obviously reach a delegated block's own downstream branches (e.g. a 
 block) — if the program-level docs alone can't settle whether that path is actually taken, report
 it as a judgment call for the designer rather than asserting it either way.
 
-**Before counting any 参照ｴﾝﾃｨﾃｨ block as evidence a table is used, run the struck-through/grayed-out
-formatting scan on that block's table-name column** (see the shared dump doc's section on this) — a
-real review missed six false "used but not declared" findings this way on a single large
-画面設計書, because a red-and-struck-through `処理区分="..."の場合` branch (and everything under it)
-was cited as live evidence without checking formatting first. This matters most on exactly the large
-sheets where skipping the scan feels tempting — but don't assume a small block is safe to skip
-either: this same mistake recurred on `SXJCB147_処置指示発行(ｻﾌﾞﾌﾟﾛ).xlsx`, sheet
+**A 参照ｴﾝﾃｨﾃｨ block that is present in the live dump is, by construction, live evidence — the dump
+script already dropped the deprecated ones.** This replaces what used to be a mandatory per-block
+formatting scan, and it removes the failure mode that made that scan mandatory in the first place:
+a real review reported six false "used but not declared" findings on a single large 画面設計書
+because a red-and-struck-through `処理区分="..."の場合` branch (and everything under it) was cited as
+live evidence, and the same mistake recurred on `SXJCB147_処置指示発行(ｻﾌﾞﾌﾟﾛ).xlsx`, sheet
 `帳票設計書(RXJC040)`, on a plain ~10-row block (rows 46-55, "(3)WF情報取得", 参照ｴﾝﾃｨﾃｨ citing
-`TXJCM137WF`) that was entirely red+struck through — a review flagged "`TXJCM137WF` used in
-帳票設計書 but absent from 機能定義書's CRUD table" without checking the block's formatting first,
-when the correct read was "this whole block is deprecated, so there is no live reference to flag as
-undeclared at all." The size of the sheet/block is not a reliable signal for whether this check
-matters — run it unconditionally, including on small, easily-overlooked blocks, and including
-specifically for the "used but not declared in the I/O table" direction of the diff below (it's easy
-to only remember this check when confirming a table "is used" at all, and forget it applies just as
-much to deciding whether that usage is live enough to demand a CRUD-table entry).
+`TXJCM137WF`) — flagged as "`TXJCM137WF` used in 帳票設計書 but absent from 機能定義書's CRUD table"
+when the whole block was deprecated and there was no live reference to flag at all. Neither can
+happen from a live dump: those blocks aren't in it.
+
+What still needs your attention is the **opposite** direction. A table declared in Ⅲ．入出力定義
+whose only usage was in a now-deleted block will look "declared but unused" — which is a real
+finding, but the useful report says *why*. Check `_DELETED_DIGEST.txt` for that table before writing
+it up, so you can distinguish "the declaration is stale, delete it too" from "the usage was removed
+by mistake."
 
 **When comparing table IDs between the I/O table and actual usage, always require an exact
 string match — never treat one ID as a match for another just because one is a prefix/substring

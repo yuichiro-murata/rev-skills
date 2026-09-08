@@ -39,11 +39,20 @@ the user's own live Excel session, the strikethrough-exclusion scan, and the ref
 
 Read `_shared/xlsx-excel-com-dump.md` first for how to dump `.xlsx` sheets to text
 via PowerShell + Excel COM (no Python/Node available here) — including its "Excluding
-struck-through / grayed-out rows from review" section. Struck-through/grayed text is marked for
-deletion, not live prose — run that section's targeted formatting scan on any block before
-proofreading it, and silently skip flagged rows (don't proofread deleted-in-spirit text, and don't
-count skipped rows as findings). As with the sibling skills, **don't dump or read `詳細設計書`
-sheets** — out of scope for the same token-saving reasons documented in the other REV skills.
+struck-through / grayed-out rows from review" section. **The dump script already removed
+struck-through/grayed text, so do NOT run a formatting scan of your own** — everything in the `.txt`
+is live prose, and deleted-in-spirit text was never handed to you to proofread.
+
+This matters more to proofreading than to any sibling check, because the artefact it removes looks
+exactly like this skill's own quarry. A partially-struck cell arrives already reduced to its live
+text, so a cell that would have read as a **garbled leftover fragment** in a raw dump now reads
+correctly. Judge what you see; do not reconstruct the original from `_DELETED_DIGEST.txt` and
+proofread that. Confirmed false findings from raw dumps: `"GSXJC205A"` reported as a misspelling of
+`GSJC205A` (only the `X` was struck), and `注意事項備考` reported as a nonexistent term (only
+`注意事項` was live).
+
+As with the sibling skills, **don't dump or read `詳細設計書` sheets** — out of scope for the same
+token-saving reasons documented in the other REV skills.
 
 ## Scope: which cells are "prose" here
 
@@ -80,8 +89,8 @@ program workbook, that means:
    - **Unmatched brackets/parentheses/quotes** within one cell.
    - **Garbled leftover fragments**: a word or clause that doesn't belong to the sentence it's sitting
      in — often the tell-tale sign of a copy-paste edit where the old text wasn't fully replaced.
-3. Before flagging anything, run the struck-through/gray-color scan on that row/cell (per the shared
-   doc) and drop it if marked deprecated.
+3. Deprecated rows were already dropped at dump time — do not scan for them, and do not treat a
+   sentence that reads oddly as evidence of a leftover you need to go verify in Excel.
 4. Cross-check every candidate against context before reporting it as a real error:
    - Is this actually a deliberate project term or abbreviation, not a typo? (Check whether the same
      spelling appears consistently elsewhere in the project — if so, it's house style, not an error.)

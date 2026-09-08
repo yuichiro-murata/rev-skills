@@ -7,10 +7,16 @@ reads) to avoid making every other skill pay the token cost of a section it neve
 A separate class of defect from strikethrough: a cell whose **font size** or **merge span** breaks
 from the surrounding pattern, usually left over from a copy-paste edit that didn't fully take (a
 pasted row keeping the source's font size, a header block duplicated on the sheet's right side that
-never got updated when the left side did). Both are checkable via COM the same way as
-Strikethrough/Color, and both need the same DBNull guard for cells with mixed-formatting runs
-(`if ($cell.Font.Size -is [System.DBNull]) { ... }` — treat as "mixed, inspect manually" rather than
-crashing the scan).
+never got updated when the left side did). Both are checkable via COM the same way the dump script
+handles `Font.Strikethrough`/`Font.Color`, and both need the same DBNull guard for cells with
+mixed-formatting runs (`if ($cell.Font.Size -is [System.DBNull]) { ... }` — treat as "mixed, inspect
+manually" rather than crashing the scan).
+
+**This is the one formatting signal the shared dump does *not* pre-resolve.** Strikethrough and
+gray-out are applied while the workbook is open and never reach the agents (see
+`xlsx-excel-com-dump.md`), but font size and merge span have no equivalent — this skill still opens
+Excel itself. Since only this skill reads the result, that is correct: don't try to fold it into the
+shared dump for the other five, which never look at it.
 
 **Font size**: loop the sheet's non-empty cells (reuse the coordinates from the bulk `Value2` dump,
 same as the strikethrough scan — no need to touch empty cells), read `Font.Size` per cell, tally into
