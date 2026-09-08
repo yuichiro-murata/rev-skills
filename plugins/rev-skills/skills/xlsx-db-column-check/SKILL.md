@@ -1,6 +1,6 @@
 ---
 name: xlsx-db-column-check
-description: Check whether a function-definition Excel doc (機能定義書/画面設計書/更新条件表) references DB columns that don't actually exist in the corresponding table-layout (テーブルレイアウト) Excel files. Distinct from design-doc-io-table-check, which checks whether a table is *declared* in the Ⅲ．入出力定義 CRUD list at all — this skill instead checks whether the *columns* referenced within an already-used table actually exist. Also flags a project-specific anti-pattern in 検索条件保存マスタ-style generic tables (e.g. TXJAM100): persisting both a master-entity code (品目コード等) AND its master-derived display name (KC品名等) together, when only the code should be stored and the name should come from a JOIN at read-time. Use when the user asks to verify a program's design doc against DB/file design docs, e.g. "このファイルが使っているカラムが、DB設計書のファイルに存在するか確認して" or "存在しないカラムを使っていたら教えて". When the user asks to REV a single design-doc workbook (not scoped to a whole WG folder), run this together with its 5 sibling single-program skills — `design-doc-internal-consistency`, `design-doc-io-table-check`, `naming-standard-compliance`, `design-doc-formatting-consistency`, `design-doc-typo-check` — as one combined pass, not standalone.
+description: Check whether a function-definition Excel doc (機能定義書/画面設計書/更新条件表) references DB columns that don't actually exist in the corresponding table-layout (テーブルレイアウト) Excel files. Distinct from design-doc-io-table-check, which checks whether a table is *declared* in the Ⅲ．入出力定義 CRUD list at all — this skill instead checks whether the *columns* referenced within an already-used table actually exist. Also flags a project-specific anti-pattern in 検索条件保存マスタ-style generic tables (e.g. TXJAM100): persisting both a master-entity code (品目コード等) AND its master-derived display name (KC品名等) together, when only the code should be stored and the name should come from a JOIN at read-time. Use when the user asks to verify a program's design doc against DB/file design docs, e.g. "このファイルが使っているカラムが、DB設計書のファイルに存在するか確認して" or "存在しないカラムを使っていたら教えて". When the user asks to REV a single design-doc workbook without naming which checks they want, the entry point is `rev-program-review`: it first asks the user, checkbox-style, which of the 6 single-program checks to run, then runs only those as one combined pass. Do not launch all six yourself. Run this skill standalone only when it was one of the selected checks, or when the user asked for this check by name.
 ---
 
 # xlsx-db-column-check
@@ -12,18 +12,14 @@ the frontmatter `description` above for what counts as a miss and how this diffe
 codebase (機能定義書 / 画面設計書 / 更新条件表 / ﾃｰﾌﾞﾙﾚｲｱｳﾄ sheets); generalizes to any
 `<機能定義書xlsx>` + `<DB設計書folder>` pair, not just one specific program.
 
-**When the user asks to REV a single program's design-doc workbook, run all 6 single-program-scoped
-skills together in that one pass** — this skill, `design-doc-internal-consistency`,
-`design-doc-io-table-check`, `naming-standard-compliance`, `design-doc-formatting-consistency`, and
-`design-doc-typo-check` — and report their findings combined as one result, not as separate reports
-the user has to request individually. When these are run as parallel background agents, do not post
-a status update each time one agent finishes — wait until every agent in the batch has completed,
-then compose and post the single combined report in one message. Also dump the target workbook's
-sheets once yourself before launching the batch, and point each agent at those scratchpad text files
-instead of letting every agent re-dump the same workbook independently — see
-`_shared/xlsx-excel-com-dump.md`'s "dump once, share the text" section. This does not extend to the WG-folder-scoped comparison skills (`db-design-cross-consistency`,
-`cross-function-similarity-check`) — bundle those in only when the user's request is itself
-folder-scoped, or they explicitly ask for them.
+**Scope selection comes first.** When the user asks to REV a single program's design-doc workbook
+without naming specific checks, `rev-program-review` is the entry point: it presents the 6
+single-program checks as a checkbox list (`AskUserQuestion`, multiSelect), then runs only the
+selected ones as one combined pass, dumping the workbook once up front and sharing the text with
+every check (see `_shared/xlsx-excel-com-dump.md`'s "dump once, share the text" section). Do **not**
+unconditionally launch all 6 yourself, and do not post a per-check status update — the combined
+report is posted once, after every selected check has finished. This skill runs on its own when it
+was one of the selected checks, or when the user asked for this check by name.
 
 ## Environment constraints (important)
 
