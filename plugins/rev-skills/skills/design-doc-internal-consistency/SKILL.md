@@ -32,7 +32,15 @@ was one of the selected checks, or when the user asked for this check by name.
 
 ## Environment
 
-Read `~/.claude/skills/_shared/xlsx-excel-com-dump.md` first for how to dump `.xlsx` sheets to text
+**Where the shared docs live:** the `_shared/*.md` files ship **inside this plugin**, in the
+`_shared/` folder next to this skill's own directory (`<plugin root>/skills/_shared/`) — **not** in
+`~/.claude/skills/_shared/`, which does not exist on a normal install. Resolve every `_shared/...`
+reference below against that folder; if it doesn't resolve, glob
+`**/rev-skills/**/skills/_shared/<filename>` and read the hit. Do not skip it and improvise the
+Excel COM dump instead: that doc carries the guard against attaching to — and then `Quit()`-ing —
+the user's own live Excel session, the strikethrough-exclusion scan, and the reference-file cache.
+
+Read `_shared/xlsx-excel-com-dump.md` first for how to dump `.xlsx` sheets to text
 via PowerShell + Excel COM (no Python/Node available here) — including its "Excluding
 struck-through / grayed-out rows from review" section. These docs are often copied from older
 workbooks, and rows/items an author struck through or grayed out are meant to be deleted, not

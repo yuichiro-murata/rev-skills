@@ -83,7 +83,9 @@ to the next one unless the user says "同じ観点で" or similar.
 
 1. **Dump the workbook once, up front** — before launching anything — and hand every check the
    resulting scratchpad text files instead of letting each one re-dump the same workbook. See
-   `_shared/xlsx-excel-com-dump.md`, section "dump once, share the text". (Exception:
+   `_shared/xlsx-excel-com-dump.md`, section "dump once, share the text" — that file ships **inside
+   this plugin** (`<plugin root>/skills/_shared/`), not under `~/.claude/skills/`; glob
+   `**/rev-skills/**/skills/_shared/xlsx-excel-com-dump.md` if the path doesn't resolve. (Exception:
    `design-doc-formatting-consistency` still needs live Excel COM access for its font/merge scan;
    only the bulk text dump is shared.)
 2. Run the selected checks as one combined pass — in parallel background agents when there are
