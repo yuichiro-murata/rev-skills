@@ -49,11 +49,22 @@ Both questions go in **one** `AskUserQuestion` call, so all 6 checkboxes appear 
 
 Put the skill name in each option's `description` alongside a one-line summary of what it finds, so
 the user can tell the options apart without knowing the skill names by heart. The user can select
-none in a group (that group's checks are simply skipped), and "Other" lets them type a scope in free
-text — honor whatever they type.
+none in a group — that group's checks are simply skipped.
 
-If **nothing at all** is selected across both questions, don't silently run everything: say that no
-check was selected and ask once more.
+### 「Other」の扱い
+
+"Other" lets the user type a scope in free text. Two cases, and they mean opposite things:
+
+- **Other with text** — honor exactly what they typed for that group, even if it names a check from
+  the other group or narrows the scope further ("入出力定義だけ", "画面項目の順序だけ見て").
+- **Other selected but left empty** — read it as "この観点は実施しない": skip **every** check in
+  that group, list them under 未実施 in the report, and don't ask again. It is the deliberate way to
+  opt a whole group out, so treat it exactly like selecting nothing in that group — never as a
+  prompt to re-ask, and never as a reason to fall back to running the group's checks.
+
+If **both** groups end up with no check to run (nothing selected, or empty "Other"), there is
+nothing to review: stop, state plainly that no check was run and that the workbook was not dumped,
+and do not fall back to running all 6.
 
 ### プロンプトを省略してよいケース
 
