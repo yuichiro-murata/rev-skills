@@ -1,6 +1,6 @@
 ---
 name: design-doc-io-table-check
-description: Check whether a program's 機能定義書「Ⅲ．入出力定義」table (the CRUD list of every DB table/file the program touches) is complete and accurate in both directions — every table actually used anywhere in 画面設計書/更新条件表/帳票設計書 (including via delegation to `07.共通項目取得.xlsx`) is declared with the right C/R/U/D flags, and every declared table is genuinely used and has a real DB一覧 entry + テーブルレイアウト file. This is the single most complex, highest-yield check in a program REV — deep delegation-tracing, WG-folder DB-layout lookups with PH2/PH3 precedence, exact-ID-match discipline, and struck-through-block exclusion all apply — so it is split out from its lighter sibling `design-doc-internal-consistency` (event/response/screen-item-ID/message-ID/three-way-match/exclusive-control checks) to get undivided attention. Use when the user asks to check 入出力定義表/CRUD一覧 completeness, or whether a design doc's declared tables match what it actually uses. When the user asks to REV a single design-doc workbook (not scoped to a whole WG folder), run this together with its 5 sibling single-program skills — `design-doc-internal-consistency`, `xlsx-db-column-check`, `naming-standard-compliance`, `design-doc-formatting-consistency`, `design-doc-typo-check` — as one combined pass, not standalone.
+description: Check whether a program's 機能定義書「Ⅲ．入出力定義」table (the CRUD list of every DB table/file the program touches) is complete and accurate in both directions — every table actually used anywhere in 画面設計書/更新条件表/帳票設計書 (including via delegation to `07.共通項目取得.xlsx`) is declared with the right C/R/U/D flags, and every declared table is genuinely used and has a real DB一覧 entry + テーブルレイアウト file. This is the single most complex, highest-yield check in a program REV — deep delegation-tracing, WG-folder DB-layout lookups with PH2/PH3 precedence, exact-ID-match discipline, and struck-through-block exclusion all apply — so it is split out from its lighter sibling `design-doc-internal-consistency` (event/response/screen-item-ID/message-ID/three-way-match/exclusive-control checks) to get undivided attention. Use when the user asks to check 入出力定義表/CRUD一覧 completeness, or whether a design doc's declared tables match what it actually uses. When the user asks to REV a single design-doc workbook without naming which checks they want, the entry point is `rev-program-review`: it first asks the user, checkbox-style, which of the 6 single-program checks to run, then runs only those as one combined pass. Do not launch all six yourself. Run this skill standalone only when it was one of the selected checks, or when the user asked for this check by name.
 ---
 
 # design-doc-io-table-check
@@ -10,18 +10,14 @@ in this project's own checklist: `01_Doc/99.共通資料/設計書記述ルー�
 (sheet "ﾁｪｯｸﾘｽﾄ", items 3-2/3-3) — see the frontmatter `description` above for exactly what "complete
 in both directions" covers and why this was split out of `design-doc-internal-consistency`.
 
-**When the user asks to REV a single program's design-doc workbook, run all 5 sibling single-program
-skills together in that one pass** — `design-doc-internal-consistency`, `xlsx-db-column-check`,
-`naming-standard-compliance`, `design-doc-formatting-consistency`, and `design-doc-typo-check` — and
-report their findings combined as one result, not as separate reports the user has to request
-individually. When these are run as parallel background agents, do not post a status update each
-time one agent finishes — wait until every agent in the batch has completed, then compose and post
-the single combined report in one message. Also dump the target workbook's sheets once yourself
-before launching the batch, and point each agent at those scratchpad text files instead of letting
-every agent re-dump the same workbook independently — see `_shared/xlsx-excel-com-dump.md`'s "dump
-once, share the text" section. This does not extend to the WG-folder-scoped comparison skills
-(`db-design-cross-consistency`, `cross-function-similarity-check`) — bundle those in only when the
-user's request is itself folder-scoped, or they explicitly ask for them.
+**Scope selection comes first.** When the user asks to REV a single program's design-doc workbook
+without naming specific checks, `rev-program-review` is the entry point: it presents the 6
+single-program checks as a checkbox list (`AskUserQuestion`, multiSelect), then runs only the
+selected ones as one combined pass, dumping the workbook once up front and sharing the text with
+every check (see `_shared/xlsx-excel-com-dump.md`'s "dump once, share the text" section). Do **not**
+unconditionally launch all 6 yourself, and do not post a per-check status update — the combined
+report is posted once, after every selected check has finished. This skill runs on its own when it
+was one of the selected checks, or when the user asked for this check by name.
 
 ## Environment
 

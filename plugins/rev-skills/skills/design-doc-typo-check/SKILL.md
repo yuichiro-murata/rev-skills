@@ -1,6 +1,6 @@
 ---
 name: design-doc-typo-check
-description: Proofread the free-text Japanese prose inside a program's design-doc workbook — feature/processing narratives, event descriptions, error-message text, footnotes, revision-history notes — for actual language mistakes (誤字/脱字/衍字/助詞の誤り/変換ミス), as distinct from its sibling skills' structural checks: cross-reference completeness (design-doc-internal-consistency), I/O table completeness (design-doc-io-table-check), DB column existence (xlsx-db-column-check), ID-numbering rules (naming-standard-compliance), and font/merge irregularities (design-doc-formatting-consistency). Use when the user asks to check 誤字脱字 or wants a language-proofreading pass on a design doc. When the user asks to REV a single design-doc workbook (not scoped to a whole WG folder), run this together with its 5 sibling single-program skills — `design-doc-internal-consistency`, `design-doc-io-table-check`, `xlsx-db-column-check`, `naming-standard-compliance`, `design-doc-formatting-consistency` — as one combined pass, not standalone.
+description: Proofread the free-text Japanese prose inside a program's design-doc workbook — feature/processing narratives, event descriptions, error-message text, footnotes, revision-history notes — for actual language mistakes (誤字/脱字/衍字/助詞の誤り/変換ミス), as distinct from its sibling skills' structural checks: cross-reference completeness (design-doc-internal-consistency), I/O table completeness (design-doc-io-table-check), DB column existence (xlsx-db-column-check), ID-numbering rules (naming-standard-compliance), and font/merge irregularities (design-doc-formatting-consistency). Use when the user asks to check 誤字脱字 or wants a language-proofreading pass on a design doc. When the user asks to REV a single design-doc workbook without naming which checks they want, the entry point is `rev-program-review`: it first asks the user, checkbox-style, which of the 6 single-program checks to run, then runs only those as one combined pass. Do not launch all six yourself. Run this skill standalone only when it was one of the selected checks, or when the user asked for this check by name.
 ---
 
 # design-doc-typo-check
@@ -18,18 +18,14 @@ anomaly `design-doc-formatting-consistency` flags is often a good hint of *where
 typo might also be hiding, though, so it's worth cross-referencing that skill's findings if run in
 the same pass.
 
-**When the user asks to REV a single program's design-doc workbook, run all 6 single-program-scoped
-skills together in that one pass** — this skill, `design-doc-internal-consistency`,
-`design-doc-io-table-check`, `xlsx-db-column-check`, `naming-standard-compliance`, and
-`design-doc-formatting-consistency` — and report their findings combined as one result, not as
-separate reports the user has to request individually. When these are run as parallel background
-agents, do not post a status update each time one agent finishes — wait until every agent in the
-batch has completed, then compose and post the single combined report in one message. Also dump the
-target workbook's sheets once yourself before launching the batch, and point each agent at those
-scratchpad text files instead of letting every agent re-dump the same workbook independently — see
-`_shared/xlsx-excel-com-dump.md`'s "dump once, share the text" section. This does not extend to the WG-folder-scoped
-comparison skills (`db-design-cross-consistency`, `cross-function-similarity-check`) — bundle those in
-only when the user's request is itself folder-scoped, or they explicitly ask for them.
+**Scope selection comes first.** When the user asks to REV a single program's design-doc workbook
+without naming specific checks, `rev-program-review` is the entry point: it presents the 6
+single-program checks as a checkbox list (`AskUserQuestion`, multiSelect), then runs only the
+selected ones as one combined pass, dumping the workbook once up front and sharing the text with
+every check (see `_shared/xlsx-excel-com-dump.md`'s "dump once, share the text" section). Do **not**
+unconditionally launch all 6 yourself, and do not post a per-check status update — the combined
+report is posted once, after every selected check has finished. This skill runs on its own when it
+was one of the selected checks, or when the user asked for this check by name.
 
 ## Environment
 
