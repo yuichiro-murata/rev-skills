@@ -99,16 +99,26 @@ exact sheet/cell for every finding so it's actionable.
    whichever file should hold it (or vice versa if the dictionary shows an entry whose 画面項目名
    disagrees with the screen design's 画面項目名 for the same ID — a rename that wasn't propagated).
 
-   **Dump the WG-specific `82.画面項目辞書_<WG名>.xlsx` via the cross-session cache with
-   `OnlySheetPatterns = @("<X-prefix>(*", "<S-prefix>(*")`** (e.g. `@("XJC(*", "SJC(*")` for
-   工程管理) instead of a full-file dump — confirmed for real that only the program's own two
-   prefix sheets are ever read from this file (a 6-sheet file like
-   `82.画面項目辞書_工程管理.xlsx` has 4 sheets — 改訂履歴, Sheet1, 翻訳リスト(各Ver), 翻訳リスト — that
-   no check ever uses). Leave the pattern open-ended with no closing `)` (`"SJC(*"`, not `"SJC(*)"`)
-   — the WG's own S-prefix sheet can carry an unexpected suffix (confirmed:
-   `SJC(工程)再開発追加分 `, trailing space included) that a closed pattern's required trailing `)`
-   would fail to match. See `_shared/xlsx-excel-com-dump.md`'s cross-session cache section for the
-   full mechanism.
+   **Don't dump `82.画面項目辞書_<WG名>.xlsx` — read an index of it. See
+   `_shared/reference-index.md`.** This check needs only `id → 画面項目名`, and the dump this step
+   used to take (the `XJC(*`/`SJC(*` sheets, all any check ever reads from the file) is 4,215,042
+   characters (~1,318,000 tokens) against a 56,323-char (~28,200-token) index, or ~1,100 tokens once
+   subset to the IDs one program actually cites. That doc also carries the two structural traps this
+   step kept hitting: the ID a design doc cites is the `ＩＤ` and `連番` sub-columns **joined**
+   (`XJC` + `8046` = `XJC8046`), so reading either alone yields IDs that appear in no design doc at
+   all; and the sheet names need an open-ended match (`"SJC(*"`, never `"SJC(*)"` — confirmed on
+   `SJC(工程)再開発追加分 `, trailing space included).
+
+   The index is built by the orchestrating session before agents launch, not by you. If you were
+   pointed at one that is missing or stale, say so rather than building it or opening Excel.
+
+   Work from the index for both directions of this check: an ID cited by the doc but absent from the
+   index is unregistered, and a 画面項目名 that differs from the index's is the rename-not-propagated
+   finding. Entries retired by strikethrough are excluded from the index, so an ID present in it is
+   genuinely registered — but an entry **renamed in place** (old name struck, new name live in the
+   same cell) is kept, carrying its live name, so a name mismatch against one of those is a real
+   finding, not an artefact. If you were handed a program-subset index, an ID missing from it means
+   "this program does not cite it", which is not a finding — only absence from the full index is.
 
 4. **4-8/5-1 — Message IDs registered.**
    Collect every message ID referenced in 画面設計書 "Ⅳ．画面項目ｲﾍﾞﾝﾄ詳細" (ﾒｯｾｰｼﾞ column) and in

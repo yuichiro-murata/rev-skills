@@ -186,9 +186,18 @@ Diff the two sets:
   on without checking that the R itself was missing from the flags. Flag any letter present in
   actual usage but absent from the row, and vice versa (a flagged letter with no matching
   operation anywhere).
-- Also check whether each table ID appears in
-  `01_Doc/06_システム設計書（一覧、管理台帳）/06-06_DB一覧_共通.xlsx` (the DB一覧) and whether its
-  ﾃｰﾌﾞﾙﾚｲｱｳﾄ workbook exists. **The DB design folder for a WG is a TOP-LEVEL project folder named
+- Also check whether each table ID appears in the DB一覧 and whether its ﾃｰﾌﾞﾙﾚｲｱｳﾄ workbook exists.
+  **The DB一覧 is per-WG** — `01_Doc/06_システム設計書（一覧、管理台帳）/06-06_DB一覧_<WG名>.xlsx`
+  (e.g. `06-06_DB一覧_工程管理.xlsx`); the `_共通` copy holds only the shared tables, so checking it
+  for a WG's own table reports a false "unregistered". Note the WG file carries **two overlapping
+  table lists on two visible sheets with different header labels** — `作成状況一覧` (header row 1,
+  `ﾃｰﾌﾞﾙID`/`ﾃｰﾌﾞﾙ名`) and `DB一覧` (header row 35, `ID`/`名称`) — and neither is a superset of the
+  other (measured on 工程管理: 353 and 219 ids, 36 of the latter absent from the former). Check both
+  before reporting a table as unregistered.
+  When resolving a table to its layout file, confirm the ID in the file's own `A6` cell: a
+  `<ID>_*.xlsx` glob also matches suffixed *other* tables (`TXJCM003_B`, `TXJAM008_IN`), and
+  accepting one silently checks the wrong table's column list.
+  **The DB design folder for a WG is a TOP-LEVEL project folder named
   `<WG番号>_<WG名>WG\07_データベース・ファイル設計書(仮)` (e.g. `11_工程管理WG\07_データベース・
   ファイル設計書(仮)`) — a sibling of `01_Doc`, NOT nested inside it**, even though most other
   design-doc types live under `01_Doc\...`. A real review once searched under the wrong,
