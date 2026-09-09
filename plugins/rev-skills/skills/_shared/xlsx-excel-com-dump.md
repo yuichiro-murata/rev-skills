@@ -414,7 +414,7 @@ all 980 cells of that sheet exactly; the trimming version reported 149 false dif
 
 The "dump once, share the text" section above only dedupes work *within* one REV run, for the one
 target workbook under review. It does nothing for the other files a REV skill reads as ground
-truth — `82.画面項目辞書_*.xlsx`, `04.ﾒｯｾｰｼﾞ管理_*.xlsx`, `09.区分名称_step2.xlsx`,
+truth — `04.ﾒｯｾｰｼﾞ管理_*.xlsx`, `09.区分名称_step2.xlsx`,
 `05.ｼｽﾃﾑ共通設計書.xlsx`, `06-*.xlsx` (機能一覧/DB一覧/レスポンス一覧), `07.共通項目取得.xlsx`, the
 チェックリスト file, and every テーブルレイアウト workbook. These almost never change between one
 program's REV and the next, yet without caching they get re-opened via Excel COM from scratch every
@@ -456,28 +456,28 @@ name patterns.** Two confirmed cases:
   `TXJCM501_ﾛｯﾄ停止.xlsx`): `改訂履歴`, `ﾃｰﾌﾞﾙﾚｲｱｳﾄ` (the one every skill actually reads),
   `JAG_ﾃｰﾌﾞﾙﾚｲｱｳﾄ` (an old JAGUR-era copy), `旧ﾃｰﾌﾞﾙﾚｲｱｳﾄ` (even older) — only 1 of 4 sheets is ever
   read. Use `$OnlySheetPatterns = @("ﾃｰﾌﾞﾙﾚｲｱｳﾄ")`.
-- **`04.ﾒｯｾｰｼﾞ管理_<WG>.xlsx` and `82.画面項目辞書_<WG>.xlsx`** — confirmed for real on the 工程管理
-  copies: `04.ﾒｯｾｰｼﾞ管理_工程管理.xlsx` has 11 sheets (改訂履歴, 方針, XSA(共通), XSK(共通), XJZ(共通),
-  XJA(基準), XJB(受注), **XJC(工程)**, **SJC(工程)**, XJD(品質), XJE(生産)) but the skills' own routing
-  rules (see `design-doc-internal-consistency` check 3/4) mean only the reviewed program's own-WG
-  JOBコード sheets (bold above) are ever read from THIS file — a common (共通) prefix routes to
+- **`04.ﾒｯｾｰｼﾞ管理_<WG>.xlsx`** — confirmed for real on the 工程管理 copy: `04.ﾒｯｾｰｼﾞ管理_工程管理.xlsx`
+  has 11 sheets (改訂履歴, 方針, XSA(共通), XSK(共通), XJZ(共通), XJA(基準), XJB(受注), **XJC(工程)**,
+  **SJC(工程)**, XJD(品質), XJE(生産)) but the skills' own routing rules (see
+  `design-doc-internal-consistency` check 3/4) mean only the reviewed program's own-WG JOBコード
+  sheets (bold above) are ever read from THIS file — a common (共通) prefix routes to
   `04.ﾒｯｾｰｼﾞ管理_共通.xlsx` instead, and a foreign-WG prefix routes to that other WG's own file, never
-  to a same-named sheet embedded in this one. `82.画面項目辞書_工程管理.xlsx` shows the same shape (6
-  sheets: SJC(工程)再開発追加分, Sheet1, **XJC(工程)**, 改訂履歴, 翻訳リスト(各Ver), 翻訳リスト — only
-  the bold one plus the WG's own S-prefix sheet are read). Use
+  to a same-named sheet embedded in this one. Use
   `$OnlySheetPatterns = @("XJC(*", "SJC(*")` (or the equivalent for the WG you're checking) —
   `-like` wildcard patterns, not exact names, since a WG's own-prefix sheet can carry an extra
-  suffix (confirmed: the real sheet name is `SJC(工程)再開発追加分 ` — extra text AND a trailing
-  space — not the plain `SJC(工程)` you might expect) that an exact-name match would miss. **Leave
-  the pattern open-ended with no closing `)`** — `-like` requires a literal `)` to match the actual
-  end of the string, so a closed pattern like `"SJC(*)"` fails against `SJC(工程)再開発追加分 `
-  (it doesn't end in `)`) even though it very much should match; confirmed this exact bug while
-  testing against the real file. `"SJC(*"` (open-ended) matches both the plain and suffixed forms
-  without accidentally matching an unrelated `XJC(...)` sheet.
+  suffix that an exact-name match would miss. **Leave the pattern open-ended with no closing `)`** —
+  `-like` requires a literal `)` to match the actual end of the string, so a closed pattern like
+  `"SJC(*)"` fails against a name such as `SJC(工程)再開発追加分 ` (extra text AND a trailing space,
+  so it doesn't end in `)`) even though it very much should match; confirmed this exact bug while
+  testing against the real 画面項目辞書 file, which carries a sheet named exactly that.
+
+**`82.画面項目辞書_*.xlsx` is not on this list** — it is indexed rather than dumped, so it never
+reaches `$OnlySheetPatterns` at all. Its sheet selection is the index builder's business and works
+by header detection, not by name; see `_shared/reference-index.md`.
 
 Leave `$OnlySheetPatterns` `$null` (the default) for file types with no such known-safe restriction
 (`09.区分名称_step2.xlsx`, `05.ｼｽﾃﾑ共通設計書.xlsx`, `06-*.xlsx`, `07.共通項目取得.xlsx`, the
-checklist file, `04.ﾒｯｾｰｼﾞ管理_共通.xlsx`/`82.画面項目辞書_共通.xlsx` — these either have few sheets
+checklist file, `04.ﾒｯｾｰｼﾞ管理_共通.xlsx` — these either have few sheets
 already or every sheet genuinely gets read by some check). If none of the given patterns match any
 sheet in a given workbook (a doc-shape exception), the script automatically falls back to dumping
 every sheet and says so — it never silently drops content.
