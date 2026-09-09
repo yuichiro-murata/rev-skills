@@ -194,9 +194,12 @@ Diff the two sets:
   `ﾃｰﾌﾞﾙID`/`ﾃｰﾌﾞﾙ名`) and `DB一覧` (header row 35, `ID`/`名称`) — and neither is a superset of the
   other (measured on 工程管理: 353 and 219 ids, 36 of the latter absent from the former). Check both
   before reporting a table as unregistered.
-  When resolving a table to its layout file, confirm the ID in the file's own `A6` cell: a
-  `<ID>_*.xlsx` glob also matches suffixed *other* tables (`TXJCM003_B`, `TXJAM008_IN`), and
-  accepting one silently checks the wrong table's column list.
+  When resolving a table to its layout file, confirm the ID in the **`ﾃｰﾌﾞﾙﾚｲｱｳﾄ` sheet's** `A6`
+  cell (under the `ﾃｰﾌﾞﾙID` label in `A5`): a `<ID>_*.xlsx` glob also matches suffixed *other* tables
+  (`TXJCM003_B`, `TXJAM008_IN`), and accepting one silently checks the wrong table's column list.
+  Take `A6` from that sheet specifically — the `旧ﾃｰﾌﾞﾙﾚｲｱｳﾄ` sheets in the same workbook hold the
+  legacy ID there (`FDMBM03`, `FDCJM03` in `TXJCM003_製造ｵｰﾀﾞｰ.xlsx`), so reading the wrong sheet
+  makes the correct file look like a mismatch.
   **The DB design folder for a WG is a TOP-LEVEL project folder named
   `<WG番号>_<WG名>WG\07_データベース・ファイル設計書(仮)` (e.g. `11_工程管理WG\07_データベース・
   ファイル設計書(仮)`) — a sibling of `01_Doc`, NOT nested inside it**, even though most other
