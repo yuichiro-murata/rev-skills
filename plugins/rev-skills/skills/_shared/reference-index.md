@@ -242,10 +242,30 @@ doc at all — confirmed by building it wrong first, which produced a 3,349-row 
 **Resolve the columns by label, never by a fixed position** — and read the offset section above,
 because the two sheets' array positions differ while their absolute positions do not.
 
-**Match the sheet names with an open-ended pattern.** Use `"XJC(*"` / `"SJC(*"`, never
-`"XJC(*)"` / `"SJC(*)"`: the WG's own S-prefix sheet can carry a suffix — confirmed on
-`SJC(工程)再開発追加分 `, trailing space included — that a closed pattern's required trailing `)`
-fails to match.
+**Match the sheet names by the reviewed WG's OWN JOB codes — never hard-code `XJC`/`SJC`.** Each
+WG's dictionary names its sheets after that WG's own X- and S-prefixes, and several dictionaries
+also carry *other* WGs' sheets:
+
+| Dictionary | Its own sheets | Other WGs' sheets also present |
+|---|---|---|
+| `_工程管理` | `XJC(工程)`, `SJC(工程)再開発追加分 ` | — |
+| `_基準情報` | `XJA(基準_JAGUR)`, `SJA(基準_刷新)` | — |
+| `_共通` | `XJZ(共通_JAGUR)`, `SJZ(共通_刷新)` | — |
+| `_品質管理` | `SJD(品質_刷新)`, `XJD(品質_JAGUR)`, `XJD(品質_状態・区分・ﾌﾗｸﾞ)`, `XJD(品質_ﾘｽﾄﾎﾞｯｸｽ)` | `XJZ(共通)`, `XJA(基準)`, `XJB(受注)`, **`XJC(工程)`**, `XJE(生産）` |
+| `_受注出荷` | `XJB(受注)`, `SJB(受注)` | `XJZ(共通)`, `XJA(基準)`, **`XJC(工程)`**, `XJD(品質)`, `XJE(生産）` |
+
+Hard-coding `XJC(*`/`SJC(*` therefore fails two different ways, both silently: against the 基準情報 or
+共通 copy it matches **nothing** and writes a header-only index, and against the 品質管理 or 受注出荷 copy
+it matches that *other* WG's embedded sheet and writes a plausible-looking index of the wrong WG's
+items. Pass the patterns in as `$SheetPatterns`, and make a zero-sheet build a **hard error** — an
+empty index reads downstream as "every ID unregistered", or, once subset, as no findings at all.
+
+Note that one WG can own several X-prefix sheets (品質管理 has three `XJD(*`), so an open-ended
+pattern is load-bearing here, not merely tolerance for a suffix.
+
+**Leave the pattern open-ended with no closing `)`** — `"SJC(*"`, never `"SJC(*)"`: the WG's own
+S-prefix sheet can carry a suffix — confirmed on `SJC(工程)再開発追加分 `, trailing space included
+— that a closed pattern's required trailing `)` fails to match.
 
 Rows where the `連番` cell is empty are group separators (`ﾒﾆｭｰ`, `機能`, `ﾎﾞﾀﾝ`, `帳票`, `項目` …)
 or unused placeholder rows — skip them on that test alone; do not try to detect section headings by
@@ -256,6 +276,10 @@ already exists BEFORE launching our own instance") — omitted here only to keep
 `CsvQ`, `IsGray`, `LiveText` and `Test-IndexFresh` above are assumed to be in scope.
 
 ```powershell
+# $SheetPatterns = the reviewed WG's OWN X- and S-prefix sheets - @('XJC(*','SJC(*') for 工程管理,
+# @('XJA(*','SJA(*') for 基準情報, @('XJZ(*','SJZ(*') for 共通, and so on. There is deliberately no
+# default: see the sheet-name section above for why a wrong pattern fails silently in two directions.
+if (-not $SheetPatterns) { throw '$SheetPatterns is required - pass the reviewed WG own X/S prefixes' }
 $src   = Get-Item -LiteralPath $DictPath
 $idxDir = Join-Path $env:USERPROFILE '.claude\skills\_cache\reference-index'
 New-Item -ItemType Directory -Force -Path $idxDir | Out-Null
@@ -272,7 +296,7 @@ $L.Add("# source: $($src.Name)")
 $L.Add("# source-mtime-utc: $($src.LastWriteTimeUtc.ToString('o'))")
 $L.Add("# source-length: $($src.Length)")
 $L.Add('# columns: id,name')
-$nRec = 0; $nRetired = 0; $nRenamed = 0
+$nRec = 0; $nRetired = 0; $nRenamed = 0; $nSheets = 0
 
 # EVERYTHING that touches the open workbook goes inside try/finally. The builder throws on three
 # layout surprises, and without this the throw skips Close/Quit entirely — cleanup then depends on
@@ -285,7 +309,8 @@ $wb = $excel.Workbooks.Open($src.FullName, $true, $true)
 
 foreach ($sh in $wb.Worksheets) {
     if ($sh.Visible -ne -1) { continue }
-    if (-not ($sh.Name -like 'XJC(*' -or $sh.Name -like 'SJC(*')) { continue }
+    if (-not ($SheetPatterns | Where-Object { $sh.Name -like $_ })) { continue }
+    $nSheets++
 
     $used = $sh.UsedRange
     $v = $used.Value2
@@ -355,6 +380,11 @@ foreach ($sh in $wb.Worksheets) {
         $L.Add((CsvQ $id) + "," + (CsvQ $nmLive))
         $nRec++
     }
+}
+# Zero matched sheets means the patterns belong to another WG. Fail loudly: writing the
+# header-only index here is the one outcome nothing downstream can distinguish from "clean".
+if ($nSheets -eq 0) {
+    throw "no visible sheet in $($src.Name) matched $($SheetPatterns -join ', ') - wrong WG prefixes?"
 }
 }
 finally {
