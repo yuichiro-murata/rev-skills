@@ -107,8 +107,9 @@ exact sheet/cell for every finding so it's actionable.
    they were measured at are in that doc. It also carries the two structural traps this
    step kept hitting: the ID a design doc cites is the `ＩＤ` and `連番` sub-columns **joined**
    (`XJC` + `8046` = `XJC8046`), so reading either alone yields IDs that appear in no design doc at
-   all; and the sheet names need an open-ended match (`"SJC(*"`, never `"SJC(*)"` — confirmed on
-   `SJC(工程)再開発追加分 `, trailing space included).
+   all; and the dictionary sheets have to be located by their `画面項目ID`/`画面項目名` header rather
+   than by sheet name, because every WG's copy names them differently and some copies carry
+   non-dictionary sheets under other WGs' names.
 
    The index is built by the orchestrating session before agents launch, not by you. If you were
    pointed at one that is missing or stale, say so rather than building it or opening Excel.

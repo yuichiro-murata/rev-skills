@@ -242,30 +242,35 @@ doc at all — confirmed by building it wrong first, which produced a 3,349-row 
 **Resolve the columns by label, never by a fixed position** — and read the offset section above,
 because the two sheets' array positions differ while their absolute positions do not.
 
-**Match the sheet names by the reviewed WG's OWN JOB codes — never hard-code `XJC`/`SJC`.** Each
-WG's dictionary names its sheets after that WG's own X- and S-prefixes, and several dictionaries
-also carry *other* WGs' sheets:
+**Find the dictionary sheets by their header, not by their name.** Every real dictionary sheet, in
+every WG's copy, has the identical layout — `画面項目ID` / `画面項目名` on row 6 at absolute columns 4
+and 6, and `ＩＤ` / `連番` / `日本語` / `ベトナム語` on row 7 at absolute columns 4-7. Confirmed on all
+five files, so **one builder handles all of them and no per-file dump method is needed**:
 
-| Dictionary | Its own sheets | Other WGs' sheets also present |
+| Dictionary | Dictionary sheets | Visible sheets that are NOT dictionaries |
 |---|---|---|
-| `_工程管理` | `XJC(工程)`, `SJC(工程)再開発追加分 ` | — |
-| `_基準情報` | `XJA(基準_JAGUR)`, `SJA(基準_刷新)` | — |
-| `_共通` | `XJZ(共通_JAGUR)`, `SJZ(共通_刷新)` | — |
-| `_品質管理` | `SJD(品質_刷新)`, `XJD(品質_JAGUR)`, `XJD(品質_状態・区分・ﾌﾗｸﾞ)`, `XJD(品質_ﾘｽﾄﾎﾞｯｸｽ)` | `XJZ(共通)`, `XJA(基準)`, `XJB(受注)`, **`XJC(工程)`**, `XJE(生産）` |
-| `_受注出荷` | `XJB(受注)`, `SJB(受注)` | `XJZ(共通)`, `XJA(基準)`, **`XJC(工程)`**, `XJD(品質)`, `XJE(生産）` |
+| `_共通` | `XJZ(共通_JAGUR)`, `SJZ(共通_刷新)` | `改訂履歴`, `Sheet1` |
+| `_基準情報` | `XJA(基準_JAGUR)`, `SJA(基準_刷新)` | `改訂履歴` |
+| `_工程管理` | `XJC(工程)`, `SJC(工程)再開発追加分 ` | `改訂履歴`, `Sheet1`, `翻訳リスト` |
+| `_品質管理` | `XJD(品質_JAGUR)`, `SJD(品質_刷新)` | `XJZ(共通)`, `XJA(基準)`, `XJB(受注)`, `XJC(工程)`, `XJE(生産）` (small `A2:K16` scraps), `XJD(品質_状態・区分・ﾌﾗｸﾞ)`, `XJD(品質_ﾘｽﾄﾎﾞｯｸｽ)`, plus the 規格/測定/ﾛｯﾄ管理台帳 sheets |
+| `_受注出荷` | `XJB(受注)`, `SJB(受注)` | `XJZ(共通)`, `XJA(基準)`, `XJC(工程)`, `XJD(品質)`, `XJE(生産）` |
 
-Hard-coding `XJC(*`/`SJC(*` therefore fails two different ways, both silently: against the 基準情報 or
-共通 copy it matches **nothing** and writes a header-only index, and against the 品質管理 or 受注出荷 copy
-it matches that *other* WG's embedded sheet and writes a plausible-looking index of the wrong WG's
-items. Pass the patterns in as `$SheetPatterns`, and make a zero-sheet build a **hard error** — an
-empty index reads downstream as "every ID unregistered", or, once subset, as no findings at all.
+A sheet-name pattern gets this wrong in **both** directions, and the two failures do not look alike:
 
-Note that one WG can own several X-prefix sheets (品質管理 has three `XJD(*`), so an open-ended
-pattern is load-bearing here, not merely tolerance for a suffix.
+- **Too narrow, and silent.** A hard-coded `XJC(*`/`SJC(*` matches nothing at all in the 基準情報 and
+  共通 copies. The loop simply never runs and a header-only index is written with no error — which
+  reads downstream as "every ID unregistered", or, once subset, as no findings at all.
+- **Too broad, and noisy.** The obvious per-WG substitution over-matches: `XJD(*` for 品質管理 also
+  picks up `XJD(品質_状態・区分・ﾌﾗｸﾞ)` and `XJD(品質_ﾘｽﾄﾎﾞｯｸｽ)`, neither of which is a dictionary.
+  Likewise `XJC(*` against the 品質管理 or 受注出荷 copy hits that file's small non-dictionary
+  `XJC(工程)` scrap sheet. These at least fail loudly, on the header probe.
 
-**Leave the pattern open-ended with no closing `)`** — `"SJC(*"`, never `"SJC(*)"`: the WG's own
-S-prefix sheet can carry a suffix — confirmed on `SJC(工程)再開発追加分 `, trailing space included
-— that a closed pattern's required trailing `)` fails to match.
+So walk every visible sheet, keep the ones whose header pair resolves, **skip** the ones whose does
+not, and **throw when a whole file yields zero dictionary sheets**. Probe the header band before
+pulling the sheet's values: `翻訳リスト` alone is 7,042 rows that would be read and discarded.
+
+This also disposes of the closed-pattern trap the name-matching approach carried (`"SJC(*)"` failing
+against `SJC(工程)再開発追加分 `, trailing space included) — there is no pattern left to close.
 
 Rows where the `連番` cell is empty are group separators (`ﾒﾆｭｰ`, `機能`, `ﾎﾞﾀﾝ`, `帳票`, `項目` …)
 or unused placeholder rows — skip them on that test alone; do not try to detect section headings by
@@ -276,10 +281,6 @@ already exists BEFORE launching our own instance") — omitted here only to keep
 `CsvQ`, `IsGray`, `LiveText` and `Test-IndexFresh` above are assumed to be in scope.
 
 ```powershell
-# $SheetPatterns = the reviewed WG's OWN X- and S-prefix sheets - @('XJC(*','SJC(*') for 工程管理,
-# @('XJA(*','SJA(*') for 基準情報, @('XJZ(*','SJZ(*') for 共通, and so on. There is deliberately no
-# default: see the sheet-name section above for why a wrong pattern fails silently in two directions.
-if (-not $SheetPatterns) { throw '$SheetPatterns is required - pass the reviewed WG own X/S prefixes' }
 $src   = Get-Item -LiteralPath $DictPath
 $idxDir = Join-Path $env:USERPROFILE '.claude\skills\_cache\reference-index'
 New-Item -ItemType Directory -Force -Path $idxDir | Out-Null
@@ -309,27 +310,33 @@ $wb = $excel.Workbooks.Open($src.FullName, $true, $true)
 
 foreach ($sh in $wb.Worksheets) {
     if ($sh.Visible -ne -1) { continue }
-    if (-not ($SheetPatterns | Where-Object { $sh.Name -like $_ })) { continue }
-    $nSheets++
 
     $used = $sh.UsedRange
-    $v = $used.Value2
     $rowsN = $used.Rows.Count; $colsN = $used.Columns.Count
     $r0 = $used.Row - 1; $c0 = $used.Column - 1
     $rows = [Math]::Min($rowsN, 5000); $cols = [Math]::Min($colsN, 60)
-    if ($rowsN -gt 5000) { Write-Warning "$($sh.Name): $rowsN rows, capped at 5000 - index is incomplete" }
 
-    # header row and the two group columns, by label (array-relative indices)
+    # Probe ONLY the header band first. $used.Value2 on a non-dictionary sheet is pure waste -
+    # 翻訳リスト is 7,042 rows - and we cannot know it is one until the header fails to resolve.
+    $hp = [Math]::Min($rows, 20)
+    $hv = $sh.Range($sh.Cells.Item(1 + $r0, 1 + $c0),
+                    $sh.Cells.Item($hp + $r0, $cols + $c0)).Value2
     $hr = 0; $gc = 0; $nc = 0
-    for ($r = 1; $r -le [Math]::Min($rows,20) -and -not ($gc -and $nc); $r++) {
+    for ($r = 1; $r -le $hp -and -not ($gc -and $nc); $r++) {
         for ($c = 1; $c -le $cols; $c++) {
-            $x = $v[$r,$c]; if ($null -eq $x) { continue }
+            $x = $hv[$r,$c]; if ($null -eq $x) { continue }
             $s = ([string]$x).Trim()
             if ($s -eq '画面項目ID') { $hr = $r; $gc = $c }
             elseif ($s -eq '画面項目名' -and $hr -eq $r) { $nc = $c }
         }
     }
-    if (-not ($hr -and $gc -and $nc)) { throw "dictionary headers not found in $($sh.Name)" }
+    # No header pair = not a dictionary sheet (改訂履歴, 翻訳リスト, Sheet1, and the non-dictionary
+    # scraps the 品質管理/受注出荷 copies carry under other WGs' names). Skip it, do not throw.
+    if (-not ($hr -and $gc -and $nc)) { continue }
+    $nSheets++
+
+    $v = $used.Value2
+    if ($rowsN -gt 5000) { Write-Warning "$($sh.Name): $rowsN rows, capped at 5000 - index is incomplete" }
     $gc1 = $gc + 1                                   # the 連番 sub-column
     $sub = $v[($hr+1), $gc1]
     if ($null -eq $sub -or ([string]$sub).Trim() -ne '連番') {
@@ -381,10 +388,10 @@ foreach ($sh in $wb.Worksheets) {
         $nRec++
     }
 }
-# Zero matched sheets means the patterns belong to another WG. Fail loudly: writing the
+# Zero dictionary sheets means the wrong workbook, or a layout change. Fail loudly: writing the
 # header-only index here is the one outcome nothing downstream can distinguish from "clean".
 if ($nSheets -eq 0) {
-    throw "no visible sheet in $($src.Name) matched $($SheetPatterns -join ', ') - wrong WG prefixes?"
+    throw "no dictionary sheet found in $($src.Name) - is this a 画面項目辞書 workbook?"
 }
 }
 finally {
