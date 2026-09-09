@@ -18,9 +18,10 @@ small index once and let the agents read the index.
 structural trap that a hand-rolled index gets wrong silently:
 
 - `06-06_DB一覧_<WG>.xlsx` carries **two overlapping table lists on two visible sheets** with
-  different header labels — `作成状況一覧` (row 1, `ﾃｰﾌﾞﾙID`/`ﾃｰﾌﾞﾙ名`, 353 ids) and `DB一覧`
-  (row 35, `ID`/`名称`, 219 ids). Indexing only the first drops 36 tables and reports them as
-  unregistered.
+  different header labels — `作成状況一覧` (row 1, `ﾃｰﾌﾞﾙID`/`ﾃｰﾌﾞﾙ名`) and `DB一覧` (row 35,
+  `ID`/`名称`) — and neither is a superset of the other. Indexing only the first drops the tables
+  that appear solely in the second and reports them as unregistered. `design-doc-io-table-check`
+  holds the measured counts and the source state they were taken at; they are not repeated here.
 - A table-layout index has **one source file per table**, so the single-source freshness contract
   below does not apply to it and there is no agreed replacement yet.
 - The table IDs a program cites include views and suffixed forms (`VXJCM004_31`, `TXJAM061WF`,
@@ -32,8 +33,9 @@ until their masters get builders of their own.
 
 ## Who builds the index: the orchestrator, once, before launching agents
 
-The index is a shared artefact, exactly like the workbook dump. Build it in the orchestrating
-session **before** any agent starts, and hand agents the path.
+An index is a shared artefact, exactly like the workbook dump. Build it in the orchestrating
+session **before** any agent starts, and hand agents the path. One REV can need more than one — see
+the routing section below — so "the index" throughout this doc means "each index you built".
 
 **Never tell parallel agents to "build or reuse" it.** Several sibling skills can want the same
 master in one REV; if two build it at once they write the same file concurrently and one of them
@@ -263,7 +265,15 @@ Cache root: `<user home>\.claude\skills\_cache\reference-index\`, one `.csv` per
 `idx_<kind>_<source file stem>.csv` — e.g.
 `idx_screen-item-dictionary_82.画面項目辞書_工程管理.csv`.
 
+**A program subset does not live in the cache.** It is per-REV, not per-source, so write it beside
+that run's dump as `subset_<index file stem>.csv`. Keep the two apart deliberately: a subset copies
+the index's `#` header verbatim, so `Test-IndexFresh` passes on it just as it does on the full index
+and cannot tell you which one you are holding — only the path can.
+
 ## Builder: screen-item dictionary (`82.画面項目辞書_<WG>.xlsx`)
+
+Inputs: `$DictPath`, **one** `82.画面項目辞書_*.xlsx` (route with the table above; call the builder
+once per file). Returns the index path, building it only if the cached one is stale.
 
 Three things about this file's structure, each of which produces a plausible-looking but useless
 index if you get it wrong:
@@ -467,6 +477,12 @@ paragraph below replaces; the token intersection can only widen a subset). Selec
 Run this **once per index** — a program citing both its own WG's items and shared `XJZ`/`SJZ` ones
 has two indexes and gets two subsets. `$tok` is built from the dump and does not change between
 them, so hoist it out of the loop if you are subsetting more than one.
+
+Inputs: `$dump` (that REV's dump directory), `$indexPath` (one index), `$subsetPath` (see the naming
+rule above). Verified end to end against the real 工程管理 index: an ID abutting Japanese
+(`画面項目SJC0600の値`), a full-width one (`SJCGSJC30８A`), a `MENU` one, the two multi-line records
+and the comma-in-name record all come through intact, and the IDs that appear only in
+`_DELETED_DIGEST.txt` are correctly left out.
 
 **Scan only the sheet dumps, never the whole dump directory.** `$dump\*.txt` also matches
 `_DELETED_DIGEST.txt`, whose whole purpose is to hold the content the live dump *removed* — on
