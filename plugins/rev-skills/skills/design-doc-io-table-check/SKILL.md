@@ -192,8 +192,12 @@ Diff the two sets:
   for a WG's own table reports a false "unregistered". Note the WG file carries **two overlapping
   table lists on two visible sheets with different header labels** — `作成状況一覧` (header row 1,
   `ﾃｰﾌﾞﾙID`/`ﾃｰﾌﾞﾙ名`) and `DB一覧` (header row 35, `ID`/`名称`) — and neither is a superset of the
-  other (measured on 工程管理: 353 and 219 ids, 36 of the latter absent from the former). Check both
-  before reporting a table as unregistered.
+  other. Check both before reporting a table as unregistered. Measured on `06-06_DB一覧_工程管理.xlsx`
+  at source length 401,141 / mtime `2026-09-08T08:44:24Z`: **352 live IDs on `作成状況一覧` and 214 on
+  `DB一覧`, with 34 of the latter absent from the former and 170 the other way round.** A further 7
+  `DB一覧` rows are struck through — retired, so do not count them as registered. Re-measure rather
+  than trusting these: the registries are edited during a review cycle, and the third visible sheet
+  (`改訂履歴`) is not a table list at all.
   When resolving a table to its layout file, confirm the ID in the **`ﾃｰﾌﾞﾙﾚｲｱｳﾄ` sheet's** `A6`
   cell (under the `ﾃｰﾌﾞﾙID` label in `A5`): a `<ID>_*.xlsx` glob also matches suffixed *other* tables
   (`TXJCM003_B`, `TXJAM008_IN`), and accepting one silently checks the wrong table's column list.
