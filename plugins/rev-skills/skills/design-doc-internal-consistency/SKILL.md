@@ -101,9 +101,10 @@ exact sheet/cell for every finding so it's actionable.
 
    **Don't dump `82.画面項目辞書_<WG名>.xlsx` — read an index of it. See
    `_shared/reference-index.md`.** This check needs only `id → 画面項目名`, and the dump this step
-   used to take (the `XJC(*`/`SJC(*` sheets, all any check ever reads from the file) is 4,215,042
-   characters (~1,318,000 tokens) against a 56,323-char (~28,200-token) index, or ~1,100 tokens once
-   subset to the IDs one program actually cites. That doc also carries the two structural traps this
+   used to take (the `XJC(*`/`SJC(*` sheets, all any check ever reads from the file) runs to roughly
+   4.2M characters (~1,318,000 tokens) against a ~56k-character (~28,200-token) index, or ~1,100
+   tokens once subset to the IDs one program actually cites — exact figures and the source state
+   they were measured at are in that doc. It also carries the two structural traps this
    step kept hitting: the ID a design doc cites is the `ＩＤ` and `連番` sub-columns **joined**
    (`XJC` + `8046` = `XJC8046`), so reading either alone yields IDs that appear in no design doc at
    all; and the sheet names need an open-ended match (`"SJC(*"`, never `"SJC(*)"` — confirmed on

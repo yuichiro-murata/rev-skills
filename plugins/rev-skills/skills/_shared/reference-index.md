@@ -44,19 +44,22 @@ do not build it yourself, and do not fall back to opening Excel unless your prom
 
 ## Measured effect
 
-On `82.画面項目辞書_工程管理.xlsx` (1,945,178 bytes), against the dump this check used to take —
-the `XJC(*`/`SJC(*` sheets only, which is all any check ever read from this file (`改訂履歴`,
-`Sheet1`, `翻訳リスト` are never used by any check; dumping the whole workbook would be 4,771,179
-chars):
+Measured on `82.画面項目辞書_工程管理.xlsx` at source length 1,945,616 / mtime
+`2026-09-09T09:30:29Z` — the masters are edited during a review cycle, so treat these as an order of
+magnitude and re-measure if the numbers matter. The comparison is against the dump this check used
+to take: the `XJC(*`/`SJC(*` sheets only, which is all any check ever read from this file (`改訂履歴`,
+`Sheet1`, `翻訳リスト` are never used by any check; the whole workbook dumps to 4,771,257 chars):
 
 | Artefact | Chars | Est. tokens |
 |---|---:|---:|
-| Scoped 2-sheet dump (the previous approach) | 4,215,042 | ~1,318,000 |
-| Index of the same two sheets | 56,323 | ~28,200 |
+| Scoped 2-sheet dump (the previous approach) | 4,215,115 | ~1,318,000 |
+| Index of the same two sheets | 56,333 | ~28,200 |
 | Index subset to the 106 IDs one program cites | 2,227 | ~1,100 |
 
-**46.7x smaller, and ~1,200x once subset.** Token estimates use ASCII÷3.5, half-width katakana×1.0,
-full-width×0.9, other×1.0 — the same method throughout this repo; character counts are exact.
+**46.7x smaller by tokens, and ~1,150x once subset.** Token estimates use ASCII÷3.5, half-width
+katakana×1.0, full-width×0.9, other×1.0 — the same method throughout this repo; character counts are
+exact. Note the character ratio (74.8x) and the token ratio (46.7x) differ: the dump is mostly ASCII
+coordinate tokens, which are ~3.5 chars each, while the index is mostly Japanese names.
 
 ## Format: sectioned CSV
 
@@ -271,10 +274,12 @@ $L.Add("# source-length: $($src.Length)")
 $L.Add('# columns: id,name')
 $nRec = 0; $nRetired = 0; $nRenamed = 0
 
-# EVERYTHING that touches the open workbook goes inside try/finally. The builder below throws on
-# three layout surprises, and a throw between Open and Quit leaves an invisible EXCEL.EXE holding
-# the file — which the next run's PID guard then sees as a pre-existing instance and refuses to
-# work around, so one bad run blocks every later one.
+# EVERYTHING that touches the open workbook goes inside try/finally. The builder throws on three
+# layout surprises, and without this the throw skips Close/Quit entirely — cleanup then depends on
+# the host process tearing down and releasing the COM references. That does happen when the script
+# runs as its own short-lived process (measured: the orphan Excel exits a few seconds later, so
+# don't judge a leak on a 1-2 second window), but it is not something to rely on inside a
+# long-lived session. Verified: on the injected-fault path Quit() runs and no orphan survives.
 try {
 $wb = $excel.Workbooks.Open($src.FullName, $true, $true)
 
