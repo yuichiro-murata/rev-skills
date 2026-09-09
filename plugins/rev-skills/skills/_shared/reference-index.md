@@ -87,7 +87,7 @@ to take: the `XJC(*`/`SJC(*` sheets only, which is all any check ever read from 
 | Index of the same two sheets | 56,333 | ~28,200 |
 | Index subset to the 106 IDs one program cites | 2,227 | ~1,100 |
 
-**46.7x smaller by tokens, and ~1,150x once subset.** Token estimates use ASCII÷3.5, half-width
+**46.7x smaller by tokens, and ~1,200x once subset.** Token estimates use ASCII÷3.5, half-width
 katakana×1.0, full-width×0.9, other×1.0 — the same method throughout this repo; character counts are
 exact. Note the character ratio (74.8x) and the token ratio (46.7x) differ: the dump is mostly ASCII
 coordinate tokens, which are ~3.5 chars each, while the index is mostly Japanese names.
@@ -109,6 +109,12 @@ MENUXJCP00,工程管理
 SJC8613,【対象不良内容(履歴)】
 SJC8614,YOTO
 ```
+
+The `source-mtime-utc` / `source-length` above are one real snapshot, and deliberately **not** the
+state the "Measured effect" figures were taken at — the file is edited during a review cycle, so two
+runs days apart legitimately disagree. Copy the format, never the values. `source-mtime-utc` is
+whatever `LastWriteTimeUtc.ToString('o')` produced, sub-second digits included, because that exact
+string is what the freshness check compares.
 
 **Why this shape and not a Markdown table.** Measured on the 2,215-record 基準情報 dictionary,
 carrying identical information: MD table 24,888 tokens, flat CSV repeating sheet/group on every row
