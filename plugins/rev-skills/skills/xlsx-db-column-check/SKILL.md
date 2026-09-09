@@ -87,6 +87,21 @@ gives you.
 2. Match the design doc's ID **exactly** — never a prefix/substring match. A `WF` suffix
    (`TXJAM061` vs `TXJAM061WF`) or a numeric suffix (`VXJCM004` vs `VXJCM004_31`/`VXJCM004_31_ALL`)
    makes it a different table; the bare/unsuffixed form often has no design file of its own at all.
+   **A filename glob is not an exact match** — `<ID>_*.xlsx` also matches suffixed *other* tables,
+   because `_`-suffixed IDs are themselves real. Confirm the ID written in **the `ﾃｰﾌﾞﾙﾚｲｱｳﾄ` sheet's**
+   `A6` cell (the one under the `ﾃｰﾌﾞﾙID` label in `A5`) and reject any candidate that disagrees,
+   whatever its phase folder. **`A6` is sheet-dependent — read it from the wrong sheet and you reject
+   the right file.** A layout workbook also carries `JAGﾃｰﾌﾞﾙﾚｲｱｳﾄ` and one or more `旧ﾃｰﾌﾞﾙﾚｲｱｳﾄ`
+   sheets; in `TXJCM003_製造ｵｰﾀﾞｰ.xlsx` those hold `TXJCM003`, `FDMBM03`, `FDCJM03` and `No.`
+   respectively. Resolving `SXJCB147`'s tables
+   by filename alone picked the wrong file for three of them —
+   `TXJCM003_B_ｵｰﾀﾞｰ投入出荷予定.xlsx` for `TXJCM003` (製造ｵｰﾀﾞｰ),
+   `TXJCM007_B_移動ﾛｯﾄ構成取消履歴.xlsx` for `TXJCM007` (移動ﾛｯﾄ構成),
+   `TXJAM008_B_共通ｺｰﾄﾞﾏｽﾀ(選択肢).xlsx` for `TXJAM008` (共通ｺｰﾄﾞﾏｽﾀ) — each of which would have
+   produced false "column does not exist" findings against another table's column list.
+   `TXJAM008_IN_共通ｺｰﾄﾞﾏｽﾀ受信.xlsx` (`TXJAM008_IN`) is a fourth trap on that same table. The `A6`
+   check overrides the phase order in step 3: a higher-priority file whose `A6` disagrees is not the
+   file.
 3. If the same ID exists under more than one phase folder, resolve by **PH3 > PH2 > top-level** —
    never by file-modified date.
 4. Also check the flat `01_Doc\07_データベース・ファイル設計書\<table>.xlsx` (no `(仮)`) for an

@@ -65,9 +65,10 @@ the digest is retired, not a numbering violation: report neither its format nor 
 | 共通コード | `<3桁JOBコード>` + `<キー1:2桁>` + `<キー2:90桁>` + `<キー3:150桁>` + ボディ(30項目×各1000桁) | — |
 
 Note: **画面項目ID** (e.g. `XJC0036`, `SJC0662` seen inside 画面設計書「Ⅴ．画面項目定義」) is a
-*different* ID space not defined in "各ID採番" at all — its correctness is "is it registered in
-`82.画面項目辞書_共通.xlsx`", which is `design-doc-internal-consistency`'s job, not a fixed regex
-to validate here.
+*different* ID space not defined in "各ID採番" at all — its correctness is "is it registered in the
+`82.画面項目辞書_*.xlsx` its own prefix routes to" (`XJC`/`SJC` → `_工程管理`, `XJZ`/`SJZ` → `_共通`,
+and so on; the table is in `_shared/reference-index.md`), which is
+`design-doc-internal-consistency`'s job, not a fixed regex to validate here.
 
 ## Procedure
 

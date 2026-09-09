@@ -20,8 +20,16 @@ shared dump for the other five, which never look at it.
 
 **Font size**: loop the sheet's non-empty cells (reuse the coordinates from the bulk `Value2` dump,
 same as the strikethrough scan — no need to touch empty cells), read `Font.Size` per cell, tally into
-a per-sheet frequency count, and take the most common value as that sheet's "mode." Cells whose size
-differs from the mode are candidates — but **most of what this turns up is a deliberate, consistent
+a per-sheet frequency count, and take the most common value as that sheet's "mode."
+
+**Apply the UsedRange origin offset.** Coordinates taken from the bulk `Value2` array are relative
+to the UsedRange, while `Cells.Item(r,c)` is absolute on the sheet — so add
+`$used.Row - 1` / `$used.Column - 1` to every `Cells.Item` access, and report coordinates in the
+same absolute frame the dump now uses, or this scan's findings will not line up with the value dump
+you cross-reference them against. 12 of the 600 in-scope PHASE3 sheets have a non-A1 origin; see
+"UsedRange-relative vs sheet-absolute coordinates" in `xlsx-excel-com-dump.md`.
+
+Cells whose size differs from the mode are candidates — but **most of what this turns up is a deliberate, consistent
 convention, not a defect**, and reporting all of it is far too noisy to be useful. Before surfacing
 anything, recognize and silently exclude these recurring systematic patterns (seen consistently
 across every workbook reviewed this way so far):

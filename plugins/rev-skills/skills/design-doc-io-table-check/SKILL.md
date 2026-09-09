@@ -186,9 +186,26 @@ Diff the two sets:
   on without checking that the R itself was missing from the flags. Flag any letter present in
   actual usage but absent from the row, and vice versa (a flagged letter with no matching
   operation anywhere).
-- Also check whether each table ID appears in
-  `01_Doc/06_システム設計書（一覧、管理台帳）/06-06_DB一覧_共通.xlsx` (the DB一覧) and whether its
-  ﾃｰﾌﾞﾙﾚｲｱｳﾄ workbook exists. **The DB design folder for a WG is a TOP-LEVEL project folder named
+- Also check whether each table ID appears in the DB一覧 and whether its ﾃｰﾌﾞﾙﾚｲｱｳﾄ workbook exists.
+  **The DB一覧 is per-WG** — `01_Doc/06_システム設計書（一覧、管理台帳）/06-06_DB一覧_<WG名>.xlsx`
+  (e.g. `06-06_DB一覧_工程管理.xlsx`); the `_共通` copy holds only the shared tables, so checking it
+  for a WG's own table reports a false "unregistered". Note the WG file carries **two overlapping
+  table lists on two visible sheets with different header labels** — `作成状況一覧` (header row 1,
+  `ﾃｰﾌﾞﾙID`/`ﾃｰﾌﾞﾙ名`) and `DB一覧` (header row 35, `ID`/`名称`) — and neither is a superset of the
+  other. Check both before reporting a table as unregistered. Measured on `06-06_DB一覧_工程管理.xlsx`
+  at source length 401,141 / mtime `2026-09-08T08:44:24Z`: **352 live IDs on `作成状況一覧` and 214 on
+  `DB一覧`, sharing 180 — so 34 of the latter are absent from the former and 172 the other way
+  round.** A further 7
+  `DB一覧` rows are struck through — retired, so do not count them as registered. Re-measure rather
+  than trusting these: the registries are edited during a review cycle, and the third visible sheet
+  (`改訂履歴`) is not a table list at all.
+  When resolving a table to its layout file, confirm the ID in the **`ﾃｰﾌﾞﾙﾚｲｱｳﾄ` sheet's** `A6`
+  cell (under the `ﾃｰﾌﾞﾙID` label in `A5`): a `<ID>_*.xlsx` glob also matches suffixed *other* tables
+  (`TXJCM003_B`, `TXJAM008_IN`), and accepting one silently checks the wrong table's column list.
+  Take `A6` from that sheet specifically — the `旧ﾃｰﾌﾞﾙﾚｲｱｳﾄ` sheets in the same workbook hold the
+  legacy ID there (`FDMBM03`, `FDCJM03` in `TXJCM003_製造ｵｰﾀﾞｰ.xlsx`), so reading the wrong sheet
+  makes the correct file look like a mismatch.
+  **The DB design folder for a WG is a TOP-LEVEL project folder named
   `<WG番号>_<WG名>WG\07_データベース・ファイル設計書(仮)` (e.g. `11_工程管理WG\07_データベース・
   ファイル設計書(仮)`) — a sibling of `01_Doc`, NOT nested inside it**, even though most other
   design-doc types live under `01_Doc\...`. A real review once searched under the wrong,

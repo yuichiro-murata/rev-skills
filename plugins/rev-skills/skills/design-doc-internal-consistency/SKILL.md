@@ -91,24 +91,47 @@ exact sheet/cell for every finding so it's actionable.
    `SJC0662`) — note the ID is usually split across two adjacent cells in the dictionary/master
    files (a 3-letter prefix column, then a 4-digit number column) even though it appears as one
    token in the screen design sheet; concatenate them when extracting from the master.
-   `01_Doc/04_共通設計/82.画面項目辞書_共通.xlsx` only covers the shared `XJZ`/`SJZ` prefix IDs —
-   **each WG has its own `82.画面項目辞書_<WG名>.xlsx`** (e.g. `82.画面項目辞書_工程管理.xlsx` holds
-   `XJC`/`SJC` IDs, `82.画面項目辞書_受注出荷.xlsx` holds its own prefixes, etc.). Check a program's
-   own-prefix IDs (matching its プログラムID's JOBコード) against its WG's file, and any `XJZ`/`SJZ`
-   IDs it also uses against the `_共通` file. Flag any ID used in the screen design but missing from
-   whichever file should hold it (or vice versa if the dictionary shows an entry whose 画面項目名
-   disagrees with the screen design's 画面項目名 for the same ID — a rename that wasn't propagated).
+   **Each ID routes to a dictionary file by its own prefix, not by which WG is under review** —
+   `XJZ`/`SJZ` → `_共通`, `XJA`/`SJA` → `_基準情報`, `XJB`/`SJB` → `_受注出荷`, `XJC`/`SJC` →
+   `_工程管理`, `XJD`/`SJD` → `_品質管理`, all under `01_Doc/04_共通設計/`; a `MENU…` ID routes on the
+   prefix that follows `MENU`. So a 工程管理 program that uses a shared item is checked against the
+   `_共通` file for that ID, and checking it against `_工程管理` would report a registered item as
+   unregistered. `_shared/reference-index.md` carries the full table and the reason an ID is never
+   satisfied by a same-named sheet embedded in another WG's copy. Expect to be handed one index per
+   file the program's IDs reach — usually one or two. Flag any ID used in the screen design but
+   missing from whichever file should hold it (or vice versa if the dictionary shows an entry whose
+   画面項目名 disagrees with the screen design's 画面項目名 for the same ID — a rename that wasn't
+   propagated).
 
-   **Dump the WG-specific `82.画面項目辞書_<WG名>.xlsx` via the cross-session cache with
-   `OnlySheetPatterns = @("<X-prefix>(*", "<S-prefix>(*")`** (e.g. `@("XJC(*", "SJC(*")` for
-   工程管理) instead of a full-file dump — confirmed for real that only the program's own two
-   prefix sheets are ever read from this file (a 6-sheet file like
-   `82.画面項目辞書_工程管理.xlsx` has 4 sheets — 改訂履歴, Sheet1, 翻訳リスト(各Ver), 翻訳リスト — that
-   no check ever uses). Leave the pattern open-ended with no closing `)` (`"SJC(*"`, not `"SJC(*)"`)
-   — the WG's own S-prefix sheet can carry an unexpected suffix (confirmed:
-   `SJC(工程)再開発追加分 `, trailing space included) that a closed pattern's required trailing `)`
-   would fail to match. See `_shared/xlsx-excel-com-dump.md`'s cross-session cache section for the
-   full mechanism.
+   **Don't dump `82.画面項目辞書_<WG名>.xlsx` — read an index of it. See
+   `_shared/reference-index.md`.** This check needs only `id → 画面項目名`, and an index of that costs
+   one to two orders of magnitude fewer tokens than the dump this step used to take, less again once
+   subset to the IDs one program actually cites; the figures and the source state they were measured
+   at are in that doc, and are deliberately not repeated here. It also carries the two structural
+   traps this step kept hitting: the ID a design doc cites is the `ＩＤ` and `連番` sub-columns
+   **joined**
+   (`XJC` + `8046` = `XJC8046`), so reading either alone yields IDs that appear in no design doc at
+   all; and the dictionary sheets have to be located by their `画面項目ID`/`画面項目名` header rather
+   than by sheet name, because every WG's copy names them differently in ways that are not guessable
+   from the WG name (`_JAGUR`, `_刷新`, a trailing space).
+
+   The index is built by the orchestrating session before agents launch, not by you. If you were
+   pointed at one that is missing or stale, say so rather than building it or opening Excel.
+
+   Work from the index for both directions of this check: an ID cited by the doc but absent from the
+   index is unregistered, and a 画面項目名 that differs from the index's is the rename-not-propagated
+   finding. Entries retired by strikethrough are excluded from the index, so an ID present in it is
+   genuinely registered — but an entry **renamed in place** (old name struck, new name live in the
+   same cell) is kept, carrying its live name, so a name mismatch against one of those is a real
+   finding, not an artefact.
+
+   You are normally handed **two** paths: a *subset* of the index scoped to this program, to read
+   whole, and the *full* index, to grep. The subset is the full index filtered down to the IDs found
+   in this program's own dump — so an ID this doc cites that is absent from the subset already **is**
+   the unregistered-ID finding. Do not dismiss it as "the subset just doesn't cover it". Confirm it
+   with one grep of the full index before reporting: absent from both is the finding; present in the
+   full index means the subsetting filter missed that ID's form, which is worth saying but is not a
+   design defect.
 
 4. **4-8/5-1 — Message IDs registered.**
    Collect every message ID referenced in 画面設計書 "Ⅳ．画面項目ｲﾍﾞﾝﾄ詳細" (ﾒｯｾｰｼﾞ column) and in
@@ -156,8 +179,8 @@ exact sheet/cell for every finding so it's actionable.
      `82.画面項目辞書_工程管理.xlsx`'s `XJC(工程)`/`SJC(工程)再開発追加分` sheets — each with a
      `カテゴリ`/`localizationid` of `'MESSAGE'` even though the file's overall name says "画面項目".
      When a message-shaped ID doesn't hyphenate and doesn't resolve in the `04.ﾒｯｾｰｼﾞ管理_*` files,
-     check the relevant `82.画面項目辞書_*` file's per-prefix sheets (col3/col4 split, same as a
-     normal screen-item ID lookup) before concluding it's unregistered.
+     check the relevant `82.画面項目辞書_*` file's dictionary sheets (the `ＩＤ`+`連番` split, same as
+     a normal screen-item ID lookup) before concluding it's unregistered.
 
 5. **4-9/4-13 — Screen layout ↔ item-definition ↔ control-spec three-way match.**
    Collect item names from "Ⅰ．画面ﾚｲｱｳﾄ" (the visual mock), "Ⅴ．画面項目定義" (the item table), and
