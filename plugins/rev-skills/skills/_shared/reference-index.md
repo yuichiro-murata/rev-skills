@@ -443,8 +443,9 @@ precompute `$gc1` as above.
 
 The index is the artefact you cache; it is not necessarily what an agent should read. For one
 program's REV, filter it to the IDs that program actually cites — 106 of 3,288 records on
-`SXJCB147`, ~1,100 tokens instead of ~28,200. Grep the live dump for the ID pattern, then select
-those records, **keeping multi-line records whole**:
+`SXJCB147`, ~1,100 tokens instead of ~28,200 (measured with the earlier, narrower ID filter that the
+paragraph below replaces; the token intersection can only widen a subset). Select those records
+**keeping multi-line records whole**:
 
 **Scan only the sheet dumps, never the whole dump directory.** `$dump\*.txt` also matches
 `_DELETED_DIGEST.txt`, whose whole purpose is to hold the content the live dump *removed* — on
@@ -453,11 +454,31 @@ cell**. Subsetting on it re-imports the struck-through references that the live 
 out, inflates the subset from 106 records to 207, and invites exactly the "reasoning about deleted
 text" finding that `xlsx-excel-com-dump.md` warns about. Filter the `_`-prefixed auxiliary files out.
 
+**Do not filter with a regex for the ID's shape.** The obvious `\b(XJC|SJC)[0-9]{4}\b` is wrong
+three ways, silently every time:
+
+- **Too narrow.** An ID is `ＩＤ`+`連番` joined, so `MENUXJCP00`, `XJCGXJC101A` and `SJCRSJC006` (the
+  renamed-in-place example above) are all real IDs. On 工程管理, **179 of 3,289 records (5.4%)** have
+  a form that pattern cannot match.
+- **`\b` does not fire against Japanese.** .NET counts kana and kanji as word characters, so
+  `管理No：XJC8046` and `【SJC8613】` match while `画面項目SJC0600の値` yields nothing at all.
+- **It bakes in one WG's prefixes**, so it needs editing per index — exactly the mistake the routing
+  section exists to prevent.
+
+Intersect the dump's ASCII word-runs with the IDs the index already holds instead. The index is the
+authority on what an ID looks like, so there is nothing to guess: a run bounded by Japanese text is
+still extracted as its own run, a non-dictionary token like the table ID `TXJCM003` simply is not in
+the index and cannot match, and the same code subsets every WG's index unchanged.
+
 ```powershell
 $sheetDumps = (Get-ChildItem -LiteralPath $dump -Filter '*.txt' |
                Where-Object { -not $_.Name.StartsWith('_') }).FullName
-$used = Select-String -Path $sheetDumps -Pattern '\b(XJC|SJC)[0-9]{4}\b' -AllMatches |
-        ForEach-Object { $_.Matches } | ForEach-Object { $_.Value } | Sort-Object -Unique
+if (-not $sheetDumps) { throw "no sheet dumps under $dump" }
+$tok = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+foreach ($f in $sheetDumps) {
+    $text = [IO.File]::ReadAllText($f, [Text.Encoding]::UTF8)
+    foreach ($m in [regex]::Matches($text, '[0-9A-Za-z_]{4,}')) { [void]$tok.Add($m.Value) }
+}
 $idx  = [IO.File]::ReadAllLines($indexPath, [Text.Encoding]::UTF8)
 
 $keep = New-Object System.Collections.Generic.List[string]
@@ -485,7 +506,7 @@ while ($i -lt $idx.Count) {
         $c = $rec.IndexOf(',')
         $id = if ($c -ge 0) { $rec.Substring(0,$c) } else { $rec }
     }
-    if ($used -contains $id) { $keep.Add($rec) }
+    if ($tok.Contains($id)) { $keep.Add($rec) }
     $total++
 }
 # Count the FULL index here, from the index itself. Do not carry the builder's $nRec over: the
