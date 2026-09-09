@@ -353,6 +353,15 @@ program's REV and the next, yet without caching they get re-opened via Excel COM
 single time, by every agent that needs them — including more than once within the same REV run, when
 several sibling skills happen to need the same reference file.
 
+**For an ID→attribute lookup, don't cache the dump at all — build an index instead. See
+`_shared/reference-index.md`.** Caching still re-reads the whole sheet into an agent's context, and
+for these masters the check needs two or three columns out of forty-odd. Measured on
+`82.画面項目辞書_工程管理.xlsx`: full dump 4,214,998 chars (~1,770,000 tokens) versus a 56,300-char
+(~28,200-token) index, and ~640 tokens once subset to the one program's IDs. That file covers the
+screen-item dictionary, テーブルレイアウト and the DB/帳票 registries. The cache below stays the right
+tool for the rest — the files whose checks read prose or block structure rather than look up a key
+(`05.ｼｽﾃﾑ共通設計書.xlsx`, `07.共通項目取得.xlsx`, `09.区分名称_step2.xlsx`, the checklist).
+
 **Use a persistent, cross-session cache keyed by the source file's last-write-time for any file in
 this category.** Cache root: `<user home>\.claude\skills\_cache\xlsx-dumps\<md5 of the lowercased
 absolute source path, plus an optional sheet-filter suffix — see below>\`, holding one

@@ -99,16 +99,20 @@ exact sheet/cell for every finding so it's actionable.
    whichever file should hold it (or vice versa if the dictionary shows an entry whose 画面項目名
    disagrees with the screen design's 画面項目名 for the same ID — a rename that wasn't propagated).
 
-   **Dump the WG-specific `82.画面項目辞書_<WG名>.xlsx` via the cross-session cache with
-   `OnlySheetPatterns = @("<X-prefix>(*", "<S-prefix>(*")`** (e.g. `@("XJC(*", "SJC(*")` for
-   工程管理) instead of a full-file dump — confirmed for real that only the program's own two
-   prefix sheets are ever read from this file (a 6-sheet file like
-   `82.画面項目辞書_工程管理.xlsx` has 4 sheets — 改訂履歴, Sheet1, 翻訳リスト(各Ver), 翻訳リスト — that
-   no check ever uses). Leave the pattern open-ended with no closing `)` (`"SJC(*"`, not `"SJC(*)"`)
-   — the WG's own S-prefix sheet can carry an unexpected suffix (confirmed:
-   `SJC(工程)再開発追加分 `, trailing space included) that a closed pattern's required trailing `)`
-   would fail to match. See `_shared/xlsx-excel-com-dump.md`'s cross-session cache section for the
-   full mechanism.
+   **Do not dump `82.画面項目辞書_<WG名>.xlsx` — build or reuse its index. See
+   `_shared/reference-index.md`.** This check needs only `id → 画面項目名`, and the full dump of
+   the 工程管理 copy is 4,214,998 characters (~1,770,000 tokens) against a ~28,200-token index, or
+   ~640 tokens once subset to the IDs this program actually cites. The index also resolves two traps
+   this check kept hitting on its own: the sheets put the ID group at different columns (`XJC(工程)`
+   at 3, `SJC(工程)再開発追加分 ` at 4), and the ID a design doc cites is the `ＩＤ` and `連番`
+   sub-columns **joined** (`XJC` + `8046` = `XJC8046`), so reading either alone yields IDs that
+   appear in no design doc at all. Retired (struck-through) dictionary entries are excluded from the
+   index, so an ID present in it is genuinely registered.
+
+   Work from the index for both directions of this check: an ID cited by the doc but absent from the
+   index is unregistered, and a 画面項目名 that differs from the index's is the rename-not-propagated
+   finding. If you were handed a program-subset index, an ID missing from it means "this program does
+   not cite it", which is not a finding — only absence from the full index is.
 
 4. **4-8/5-1 — Message IDs registered.**
    Collect every message ID referenced in 画面設計書 "Ⅳ．画面項目ｲﾍﾞﾝﾄ詳細" (ﾒｯｾｰｼﾞ column) and in

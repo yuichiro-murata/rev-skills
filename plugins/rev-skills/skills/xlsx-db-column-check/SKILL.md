@@ -77,7 +77,14 @@ already the live text (`PXJCO124`), and `③④` treated as two entity reference
 (`PSJCO205`). All three came from matching raw text; none can occur when matching what the live dump
 gives you.
 
-### 3. Locate and dump the actual DB design files
+### 3. Locate and index the actual DB design files
+
+**Build or reuse a table-layout index rather than dumping each workbook — see
+`_shared/reference-index.md`.** This check needs `項目名 / 項目ID / type / length` per table; the
+index for one program's 19 tables is 39,022 chars (~15,100 tokens) against 114,381 chars (~48,000)
+of raw dump, and it excludes struck-through columns so a deleted column can't be reported as
+existing. The rules below still decide *which file* each table ID resolves to; the index is how you
+read it once resolved.
 
 **Quick reference — resolving a table ID to its one authoritative layout file:**
 
@@ -87,6 +94,13 @@ gives you.
 2. Match the design doc's ID **exactly** — never a prefix/substring match. A `WF` suffix
    (`TXJAM061` vs `TXJAM061WF`) or a numeric suffix (`VXJCM004` vs `VXJCM004_31`/`VXJCM004_31_ALL`)
    makes it a different table; the bare/unsuffixed form often has no design file of its own at all.
+   **A filename glob is not an exact match.** `<ID>_*.xlsx` also matches suffixed *other* tables,
+   because `_`-suffixed IDs are themselves real — so confirm the ID written in the file's own `A6`
+   cell and reject any candidate that disagrees, whatever its phase folder. Resolving `SXJCB147`'s
+   19 tables by filename alone picked the wrong table for three of them
+   (`TXJCM003_B_ｵｰﾀﾞｰ投入出荷予定` for `TXJCM003`, `TXJCM007_B_移動ﾛｯﾄ構成取消履歴` for `TXJCM007`,
+   `TXJAM008_B_共通ｺｰﾄﾞﾏｽﾀ(選択肢)` for `TXJAM008`), each of which would have produced false
+   "column does not exist" findings against another table's column list.
 3. If the same ID exists under more than one phase folder, resolve by **PH3 > PH2 > top-level** —
    never by file-modified date.
 4. Also check the flat `01_Doc\07_データベース・ファイル設計書\<table>.xlsx` (no `(仮)`) for an

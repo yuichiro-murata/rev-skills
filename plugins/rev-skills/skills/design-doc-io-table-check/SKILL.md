@@ -188,7 +188,11 @@ Diff the two sets:
   operation anywhere).
 - Also check whether each table ID appears in
   `01_Doc/06_システム設計書（一覧、管理台帳）/06-06_DB一覧_共通.xlsx` (the DB一覧) and whether its
-  ﾃｰﾌﾞﾙﾚｲｱｳﾄ workbook exists. **The DB design folder for a WG is a TOP-LEVEL project folder named
+  ﾃｰﾌﾞﾙﾚｲｱｳﾄ workbook exists. Both are ID lookups, so read them through an index rather than a
+  dump — see `_shared/reference-index.md`, which also covers the 帳票一覧 registration check.
+  When resolving a table to its layout file, confirm the ID in the file's own `A6` cell: a
+  `<ID>_*.xlsx` glob also matches suffixed *other* tables (`TXJCM003_B`, `TXJAM008_IN`), and
+  accepting one silently checks the wrong table. **The DB design folder for a WG is a TOP-LEVEL project folder named
   `<WG番号>_<WG名>WG\07_データベース・ファイル設計書(仮)` (e.g. `11_工程管理WG\07_データベース・
   ファイル設計書(仮)`) — a sibling of `01_Doc`, NOT nested inside it**, even though most other
   design-doc types live under `01_Doc\...`. A real review once searched under the wrong,
