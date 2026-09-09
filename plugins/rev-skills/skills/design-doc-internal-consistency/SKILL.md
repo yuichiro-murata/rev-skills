@@ -91,13 +91,17 @@ exact sheet/cell for every finding so it's actionable.
    `SJC0662`) — note the ID is usually split across two adjacent cells in the dictionary/master
    files (a 3-letter prefix column, then a 4-digit number column) even though it appears as one
    token in the screen design sheet; concatenate them when extracting from the master.
-   `01_Doc/04_共通設計/82.画面項目辞書_共通.xlsx` only covers the shared `XJZ`/`SJZ` prefix IDs —
-   **each WG has its own `82.画面項目辞書_<WG名>.xlsx`** (e.g. `82.画面項目辞書_工程管理.xlsx` holds
-   `XJC`/`SJC` IDs, `82.画面項目辞書_受注出荷.xlsx` holds its own prefixes, etc.). Check a program's
-   own-prefix IDs (matching its プログラムID's JOBコード) against its WG's file, and any `XJZ`/`SJZ`
-   IDs it also uses against the `_共通` file. Flag any ID used in the screen design but missing from
-   whichever file should hold it (or vice versa if the dictionary shows an entry whose 画面項目名
-   disagrees with the screen design's 画面項目名 for the same ID — a rename that wasn't propagated).
+   **Each ID routes to a dictionary file by its own prefix, not by which WG is under review** —
+   `XJZ`/`SJZ` → `_共通`, `XJA`/`SJA` → `_基準情報`, `XJB`/`SJB` → `_受注出荷`, `XJC`/`SJC` →
+   `_工程管理`, `XJD`/`SJD` → `_品質管理`, all under `01_Doc/04_共通設計/`; a `MENU…` ID routes on the
+   prefix that follows `MENU`. So a 工程管理 program that uses a shared item is checked against the
+   `_共通` file for that ID, and checking it against `_工程管理` would report a registered item as
+   unregistered. `_shared/reference-index.md` carries the full table and the reason an ID is never
+   satisfied by a same-named sheet embedded in another WG's copy. Expect to be handed one index per
+   file the program's IDs reach — usually one or two. Flag any ID used in the screen design but
+   missing from whichever file should hold it (or vice versa if the dictionary shows an entry whose
+   画面項目名 disagrees with the screen design's 画面項目名 for the same ID — a rename that wasn't
+   propagated).
 
    **Don't dump `82.画面項目辞書_<WG名>.xlsx` — read an index of it. See
    `_shared/reference-index.md`.** This check needs only `id → 画面項目名`, and the dump this step

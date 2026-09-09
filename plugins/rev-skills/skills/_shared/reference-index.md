@@ -42,6 +42,37 @@ reads a torn index. Same reasoning as "dump once, share the text" in `xlsx-excel
 If you are a sub-agent and the index you were pointed at is missing or stale, **say so and stop** —
 do not build it yourself, and do not fall back to opening Excel unless your prompt allowed it.
 
+## Which dictionary file: route by the ID's own prefix, not by the reviewing WG
+
+`82.画面項目辞書_*.xlsx` is split by JOBコード, not by who is doing the review. A 工程管理 program that
+puts a shared item on its screen cites an `XJZ…`/`SJZ…` ID, and that ID is registered in
+`82.画面項目辞書_共通.xlsx` — it is not in `_工程管理` at all. Look for it there and you report a
+registered item as unregistered.
+
+| ID prefix | Dictionary file (under `01_Doc/04_共通設計/`) |
+|---|---|
+| `XJZ` / `SJZ` | `82.画面項目辞書_共通.xlsx` |
+| `XJA` / `SJA` | `82.画面項目辞書_基準情報.xlsx` |
+| `XJB` / `SJB` | `82.画面項目辞書_受注出荷.xlsx` |
+| `XJC` / `SJC` | `82.画面項目辞書_工程管理.xlsx` |
+| `XJD` / `SJD` | `82.画面項目辞書_品質管理.xlsx` |
+
+A `MENU`-prefixed ID carries its routing prefix immediately after `MENU` — `MENUXJCP00` → 工程管理,
+`MENUXJZP00` → 共通.
+
+This is the routing rule `04.ﾒｯｾｰｼﾞ管理_*.xlsx` already follows (see `xlsx-excel-com-dump.md`): a
+foreign prefix routes to that other WG's own file, **never** to a same-named sheet embedded in the
+copy you happen to have open. In this file that matters twice over, because the sheets the 品質管理
+and 受注出荷 copies carry under other WGs' names are not dictionaries at all — see the builder's
+sheet table below.
+
+**Build one index per dictionary file the program's IDs route to — never one merged index.** The
+freshness contract below is single-source: a merged index has no meaningful `# source-mtime-utc`.
+Collect the distinct prefixes from the program's dump, build an index for each file they name,
+subset each, and hand the agent all of them. Most programs touch one or two files. The builder needs
+no per-file configuration — it locates dictionary sheets by their header, so the same call handles
+every one of the five.
+
 ## Measured effect
 
 Measured on `82.画面項目辞書_工程管理.xlsx` at source length 1,945,616 / mtime

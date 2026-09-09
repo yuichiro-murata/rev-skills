@@ -91,9 +91,11 @@ to the next one unless the user says "同じ観点で" or similar.
 2. **Build the reference-master index in the same pre-launch step, if a selected check needs it** —
    see `_shared/reference-index.md`. Today only `design-doc-internal-consistency` does (the
    画面項目辞書 index). That doc instructs the *agent* to stop rather than build it, so skipping this
-   step silently drops that check's dictionary-registration test. Build it, subset it to the
-   program's own IDs, and pass both paths in the agent's prompt — the subset to read, the full index
-   to grep.
+   step silently drops that check's dictionary-registration test. Build **one index per dictionary
+   file the program's screen-item IDs route to** — that doc's routing table maps each ID prefix to
+   its `82.画面項目辞書_*.xlsx`, and a program using shared `XJZ`/`SJZ` items needs the `_共通` file
+   as well as its own WG's. Subset each to the program's IDs, and pass both paths per file in the
+   agent's prompt — the subset to read, the full index to grep.
 3. Run the selected checks as one combined pass — in parallel background agents when there are
    several. Follow each selected skill's own SKILL.md as the authority for how that check is done;
    this skill only decides *which* checks run.
