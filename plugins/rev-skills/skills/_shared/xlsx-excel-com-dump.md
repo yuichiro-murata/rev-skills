@@ -423,11 +423,12 @@ several sibling skills happen to need the same reference file.
 
 **One exception: `82.画面項目辞書_*.xlsx` is indexed, not cached — see
 `_shared/reference-index.md`.** Caching still re-reads whole sheets into an agent's context, and
-the only thing any check wants from that file is `id → 画面項目名`. On the 工程管理 copy, the two
-sheets a check reads dump to roughly 4.2M characters (~1,318,000 tokens) against a ~56k-character
-(~28,200-token) index, or ~1,100 tokens once subset to one program's IDs — **exact figures and the
-source state they were measured at live in `reference-index.md`, not here**, so they only have to be
-refreshed in one place. Every other file listed above — including テーブルレイアウト workbooks and the
+the only thing any check wants from that file is `id → 画面項目名`. On the 工程管理 copy the index is
+between one and two orders of magnitude smaller than the dump it replaces, and smaller again once
+subset to one program's IDs — **the figures and the source state they were measured at live in
+`reference-index.md`, not here**, so they only have to be refreshed in one place. Do not restate
+them here, however tempting: three stale copies is what this pointer exists to prevent. Every other
+file listed above — including テーブルレイアウト workbooks and the
 `06-*.xlsx` registries — keeps using the cache below; that doc explains why each of those still
 needs a builder of its own before it can be indexed safely.
 

@@ -104,12 +104,12 @@ exact sheet/cell for every finding so it's actionable.
    propagated).
 
    **Don't dump `82.画面項目辞書_<WG名>.xlsx` — read an index of it. See
-   `_shared/reference-index.md`.** This check needs only `id → 画面項目名`, and the dump this step
-   used to take (the `XJC(*`/`SJC(*` sheets, all any check ever reads from the file) runs to roughly
-   4.2M characters (~1,318,000 tokens) against a ~56k-character (~28,200-token) index, or ~1,100
-   tokens once subset to the IDs one program actually cites — exact figures and the source state
-   they were measured at are in that doc. It also carries the two structural traps this
-   step kept hitting: the ID a design doc cites is the `ＩＤ` and `連番` sub-columns **joined**
+   `_shared/reference-index.md`.** This check needs only `id → 画面項目名`, and an index of that costs
+   one to two orders of magnitude fewer tokens than the dump this step used to take, less again once
+   subset to the IDs one program actually cites; the figures and the source state they were measured
+   at are in that doc, and are deliberately not repeated here. It also carries the two structural
+   traps this step kept hitting: the ID a design doc cites is the `ＩＤ` and `連番` sub-columns
+   **joined**
    (`XJC` + `8046` = `XJC8046`), so reading either alone yields IDs that appear in no design doc at
    all; and the dictionary sheets have to be located by their `画面項目ID`/`画面項目名` header rather
    than by sheet name, because every WG's copy names them differently and some copies carry
