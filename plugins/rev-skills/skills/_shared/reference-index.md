@@ -261,7 +261,7 @@ if (Test-IndexFresh $idxPath $src.FullName) { return $idxPath }   # reuse; open 
 
 $excel = New-Object -ComObject Excel.Application     # + the PID guard, see above
 $excel.Visible = $false; $excel.DisplayAlerts = $false; $excel.ScreenUpdating = $false
-$wb = $excel.Workbooks.Open($src.FullName, $true, $true)
+$wb = $null
 
 $L = New-Object System.Collections.Generic.List[string]
 $L.Add('# index: screen-item-dictionary')
@@ -270,6 +270,13 @@ $L.Add("# source-mtime-utc: $($src.LastWriteTimeUtc.ToString('o'))")
 $L.Add("# source-length: $($src.Length)")
 $L.Add('# columns: id,name')
 $nRec = 0; $nRetired = 0; $nRenamed = 0
+
+# EVERYTHING that touches the open workbook goes inside try/finally. The builder below throws on
+# three layout surprises, and a throw between Open and Quit leaves an invisible EXCEL.EXE holding
+# the file — which the next run's PID guard then sees as a pre-existing instance and refuses to
+# work around, so one bad run blocks every later one.
+try {
+$wb = $excel.Workbooks.Open($src.FullName, $true, $true)
 
 foreach ($sh in $wb.Worksheets) {
     if ($sh.Visible -ne -1) { continue }
@@ -320,6 +327,10 @@ foreach ($sh in $wb.Worksheets) {
         $a = LiveText $sh.Cells.Item($ar, ($gc  + $c0))
         $b = LiveText $sh.Cells.Item($ar, ($gc1 + $c0))
         if ($null -eq $b) { $nRetired++; continue }                # 連番 withdrawn = entry retired
+        # The category cell struck while the sequence survives means the entry is mid-recategorisation.
+        # Emitting the bare 連番 would put an id in the index that matches nothing in any design doc,
+        # so treat it as retired rather than half-registered. (0 rows on 工程管理 today - a guard.)
+        if ($null -eq $a -and ([string]$pre).Trim().Length -gt 0) { $nRetired++; continue }
         $id = (([string]$a) + ([string]$b)).Trim()
         if ($id.Length -eq 0) { $nRetired++; continue }
 
@@ -340,8 +351,13 @@ foreach ($sh in $wb.Worksheets) {
         $nRec++
     }
 }
-$wb.Close($false); $excel.Quit()
-[System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
+}
+finally {
+    if ($wb) { try { $wb.Close($false) } catch {} }
+    try { $excel.Quit() } catch {}
+    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
+    [GC]::Collect()
+}
 [IO.File]::WriteAllLines($idxPath, $L, [Text.Encoding]::UTF8)
 "$idxPath : $nRec records, $nRetired retired, $nRenamed renamed-in-place"
 ```
@@ -372,7 +388,7 @@ $used = Select-String -Path $sheetDumps -Pattern '\b(XJC|SJC)[0-9]{4}\b' -AllMat
 $idx  = [IO.File]::ReadAllLines($indexPath, [Text.Encoding]::UTF8)
 
 $keep = New-Object System.Collections.Generic.List[string]
-$i = 0
+$i = 0; $total = 0
 while ($i -lt $idx.Count) {
     $line = $idx[$i]
     if ($line.StartsWith('#')) { $keep.Add($line); $i++; continue }
@@ -397,8 +413,13 @@ while ($i -lt $idx.Count) {
         $id = if ($c -ge 0) { $rec.Substring(0,$c) } else { $rec }
     }
     if ($used -contains $id) { $keep.Add($rec) }
+    $total++
 }
-$keep.Add("# full-index-record-count: $nRec")
+# Count the FULL index here, from the index itself. Do not carry the builder's $nRec over: the
+# builder short-circuits and returns early whenever the cached index is still fresh, so on the
+# common path that variable was never assigned and the line would come out empty — leaving the
+# agent unable to tell "not cited by this program" from "not in the dictionary".
+$keep.Add("# full-index-record-count: $total")
 [IO.File]::WriteAllLines($subsetPath, $keep, [Text.Encoding]::UTF8)
 ```
 

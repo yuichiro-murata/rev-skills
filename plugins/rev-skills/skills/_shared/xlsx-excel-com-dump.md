@@ -65,6 +65,12 @@ Instead: before launching the batch, run the live dump (per "The dump script" be
 against every sheet, and pass the resulting `.txt` file paths into each agent's prompt ("read
 `<path>` for sheet X — don't re-dump it").
 
+**In the same pre-launch step, build the reference-master index if any selected check needs it —
+see `_shared/reference-index.md`.** Today that means `design-doc-internal-consistency`, which reads
+the 画面項目辞書 index. That doc tells the *agent* not to build the index and to stop if it is
+missing, so if you skip this step the check simply does not run. Build it once, subset it to the
+program's own IDs, and pass both paths in the prompt — same discipline as the dump.
+
 **The dump script already applies strikethrough and gray-out, so a shared dump now carries
 everything all but one skill needs — no agent should run its own strikethrough/gray scan.** Struck
 cells are absent from the `.txt` entirely and partially-struck cells carry only their live text, so
