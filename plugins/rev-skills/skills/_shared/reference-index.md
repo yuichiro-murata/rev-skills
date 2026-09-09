@@ -453,15 +453,22 @@ while ($i -lt $idx.Count) {
 # Count the FULL index here, from the index itself. Do not carry the builder's $nRec over: the
 # builder short-circuits and returns early whenever the cached index is still fresh, so on the
 # common path that variable was never assigned and the line would come out empty — leaving the
-# agent unable to tell "not cited by this program" from "not in the dictionary".
+# line come out blank, which reads as a truncated or failed subset.
 $keep.Add("# full-index-record-count: $total")
 [IO.File]::WriteAllLines($subsetPath, $keep, [Text.Encoding]::UTF8)
 ```
 
-Hand the agent the subset **plus** the full index's record count, so it can tell "not in the subset
-because this program does not use it" from "not in the dictionary at all". An ID the program cites
-that is missing from the subset is the finding; an ID missing from the *index* is a different,
-stronger finding.
+Hand the agent **both paths** — the subset to read whole, the full index to grep. A record count
+cannot stand in for the full index: it says nothing about whether any particular ID is in there.
+
+And be explicit with the agent about what a miss means, because the intuitive reading is backwards.
+The subset is the full index filtered by the IDs found in this program's dump, so an ID the program
+cites that is missing from the subset already **is** the unregistered-ID finding — not "this program
+does not use it". The full index is the confirmation step, not a separate question: one grep
+separates "genuinely absent from the dictionary" (the finding) from "absent from the subset because
+the ID pattern above did not match its form" (a subsetting gap — report it, but it is not a design
+defect). Telling the agent to suppress subset misses disables the only finding this check produces,
+since by construction every cited-and-registered ID is already in the subset.
 
 ## What still needs the full workbook
 

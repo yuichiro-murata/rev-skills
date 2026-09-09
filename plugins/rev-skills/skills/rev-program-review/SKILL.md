@@ -92,7 +92,8 @@ to the next one unless the user says "同じ観点で" or similar.
    see `_shared/reference-index.md`. Today only `design-doc-internal-consistency` does (the
    画面項目辞書 index). That doc instructs the *agent* to stop rather than build it, so skipping this
    step silently drops that check's dictionary-registration test. Build it, subset it to the
-   program's own IDs, and pass both paths in the agent's prompt.
+   program's own IDs, and pass both paths in the agent's prompt — the subset to read, the full index
+   to grep.
 3. Run the selected checks as one combined pass — in parallel background agents when there are
    several. Follow each selected skill's own SKILL.md as the authority for how that check is done;
    this skill only decides *which* checks run.

@@ -118,8 +118,15 @@ exact sheet/cell for every finding so it's actionable.
    finding. Entries retired by strikethrough are excluded from the index, so an ID present in it is
    genuinely registered — but an entry **renamed in place** (old name struck, new name live in the
    same cell) is kept, carrying its live name, so a name mismatch against one of those is a real
-   finding, not an artefact. If you were handed a program-subset index, an ID missing from it means
-   "this program does not cite it", which is not a finding — only absence from the full index is.
+   finding, not an artefact.
+
+   You are normally handed **two** paths: a *subset* of the index scoped to this program, to read
+   whole, and the *full* index, to grep. The subset is the full index filtered down to the IDs found
+   in this program's own dump — so an ID this doc cites that is absent from the subset already **is**
+   the unregistered-ID finding. Do not dismiss it as "the subset just doesn't cover it". Confirm it
+   with one grep of the full index before reporting: absent from both is the finding; present in the
+   full index means the subsetting filter missed that ID's form, which is worth saying but is not a
+   design defect.
 
 4. **4-8/5-1 — Message IDs registered.**
    Collect every message ID referenced in 画面設計書 "Ⅳ．画面項目ｲﾍﾞﾝﾄ詳細" (ﾒｯｾｰｼﾞ column) and in

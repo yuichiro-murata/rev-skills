@@ -69,7 +69,8 @@ against every sheet, and pass the resulting `.txt` file paths into each agent's 
 see `_shared/reference-index.md`.** Today that means `design-doc-internal-consistency`, which reads
 the 画面項目辞書 index. That doc tells the *agent* not to build the index and to stop if it is
 missing, so if you skip this step the check simply does not run. Build it once, subset it to the
-program's own IDs, and pass both paths in the prompt — same discipline as the dump.
+program's own IDs, and pass both paths in the prompt (the subset to read whole, the full index to
+grep) — same discipline as the dump.
 
 **The dump script already applies strikethrough and gray-out, so a shared dump now carries
 everything all but one skill needs — no agent should run its own strikethrough/gray scan.** Struck
