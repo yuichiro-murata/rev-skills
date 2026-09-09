@@ -179,8 +179,8 @@ exact sheet/cell for every finding so it's actionable.
      `82.画面項目辞書_工程管理.xlsx`'s `XJC(工程)`/`SJC(工程)再開発追加分` sheets — each with a
      `カテゴリ`/`localizationid` of `'MESSAGE'` even though the file's overall name says "画面項目".
      When a message-shaped ID doesn't hyphenate and doesn't resolve in the `04.ﾒｯｾｰｼﾞ管理_*` files,
-     check the relevant `82.画面項目辞書_*` file's per-prefix sheets (col3/col4 split, same as a
-     normal screen-item ID lookup) before concluding it's unregistered.
+     check the relevant `82.画面項目辞書_*` file's dictionary sheets (the `ＩＤ`+`連番` split, same as
+     a normal screen-item ID lookup) before concluding it's unregistered.
 
 5. **4-9/4-13 — Screen layout ↔ item-definition ↔ control-spec three-way match.**
    Collect item names from "Ⅰ．画面ﾚｲｱｳﾄ" (the visual mock), "Ⅴ．画面項目定義" (the item table), and
