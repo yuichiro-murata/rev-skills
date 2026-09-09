@@ -284,16 +284,18 @@ every WG's copy, has the identical layout — `画面項目ID` / `画面項目�
 and 6, and `ＩＤ` / `連番` / `日本語` / `ベトナム語` on row 7 at absolute columns 4-7. Confirmed on all
 five files, so **one builder handles all of them and no per-file dump method is needed**:
 
-| Dictionary | Dictionary sheets | Records | Other visible sheets |
-|---|---|---:|---|
-| `_共通` | `XJZ(共通_JAGUR)`, `SJZ(共通_刷新)` | 1,363 | `改訂履歴` |
-| `_基準情報` | `XJA(基準_JAGUR)`, `SJA(基準_刷新)` | 2,319 | `改訂履歴` |
-| `_工程管理` | `XJC(工程)`, `SJC(工程)再開発追加分 ` | 3,289 | `改訂履歴`, `Sheet1`, `翻訳リスト` |
-| `_品質管理` | `XJD(品質_JAGUR)`, `SJD(品質_刷新)` | 1,711 | `改訂履歴` |
-| `_受注出荷` | `XJB(受注)`, `SJB(受注)` | 2,391 | `改訂履歴` |
+| Dictionary | Dictionary sheets | Index records | Retired | Other visible sheets |
+|---|---|---:|---:|---|
+| `_共通` | `XJZ(共通_JAGUR)`, `SJZ(共通_刷新)` | 1,340 | 23 | `改訂履歴` |
+| `_基準情報` | `XJA(基準_JAGUR)`, `SJA(基準_刷新)` | 2,315 | 4 | `改訂履歴` |
+| `_工程管理` | `XJC(工程)`, `SJC(工程)再開発追加分 ` | 3,288 | 1 | `改訂履歴`, `Sheet1`, `翻訳リスト` |
+| `_品質管理` | `XJD(品質_JAGUR)`, `SJD(品質_刷新)` | 1,705 | 6 | `改訂履歴` |
+| `_受注出荷` | `XJB(受注)`, `SJB(受注)` | 2,378 | 13 | `改訂履歴` |
 
-Record counts drift as the masters are edited — the 2,215-record 基準情報 figure quoted under
-*Format* below is an earlier measurement of that same file, not a contradiction.
+"Index records" is after dropping strikethrough-retired entries, so it is the size the builder
+writes; "Retired" is what it dropped. Counts drift as the masters are edited — the 2,215-record
+基準情報 figure quoted under *Format* below is an earlier measurement of that same file, not a
+contradiction.
 
 The 品質管理 and 受注出荷 copies also carry sheets named after *other* WGs — `XJZ(共通)`, `XJA(基準)`,
 `XJC(工程)` and so on — which are small `A2:K16` scraps, not dictionaries. **They are all hidden**, so
