@@ -194,7 +194,8 @@ Diff the two sets:
   `ﾃｰﾌﾞﾙID`/`ﾃｰﾌﾞﾙ名`) and `DB一覧` (header row 35, `ID`/`名称`) — and neither is a superset of the
   other. Check both before reporting a table as unregistered. Measured on `06-06_DB一覧_工程管理.xlsx`
   at source length 401,141 / mtime `2026-09-08T08:44:24Z`: **352 live IDs on `作成状況一覧` and 214 on
-  `DB一覧`, with 34 of the latter absent from the former and 170 the other way round.** A further 7
+  `DB一覧`, sharing 180 — so 34 of the latter are absent from the former and 172 the other way
+  round.** A further 7
   `DB一覧` rows are struck through — retired, so do not count them as registered. Re-measure rather
   than trusting these: the registries are edited during a review cycle, and the third visible sheet
   (`改訂履歴`) is not a table list at all.

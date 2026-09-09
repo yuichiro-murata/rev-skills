@@ -112,8 +112,8 @@ exact sheet/cell for every finding so it's actionable.
    **joined**
    (`XJC` + `8046` = `XJC8046`), so reading either alone yields IDs that appear in no design doc at
    all; and the dictionary sheets have to be located by their `画面項目ID`/`画面項目名` header rather
-   than by sheet name, because every WG's copy names them differently and some copies carry
-   non-dictionary sheets under other WGs' names.
+   than by sheet name, because every WG's copy names them differently in ways that are not guessable
+   from the WG name (`_JAGUR`, `_刷新`, a trailing space).
 
    The index is built by the orchestrating session before agents launch, not by you. If you were
    pointed at one that is missing or stale, say so rather than building it or opening Excel.

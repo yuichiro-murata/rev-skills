@@ -110,9 +110,9 @@ SJC8613,【対象不良内容(履歴)】
 SJC8614,YOTO
 ```
 
-The `source-mtime-utc` / `source-length` above are one real snapshot, and deliberately **not** the
-state the "Measured effect" figures were taken at — the file is edited during a review cycle, so two
-runs days apart legitimately disagree. Copy the format, never the values. `source-mtime-utc` is
+The `source-mtime-utc` / `source-length` above are one real snapshot, and **not** the same state the
+"Measured effect" figures were taken at — the file is edited during a review cycle, so two runs
+legitimately disagree. Copy the format, never the values. `source-mtime-utc` is
 whatever `LastWriteTimeUtc.ToString('o')` produced, sub-second digits included, because that exact
 string is what the freshness check compares.
 
@@ -284,26 +284,32 @@ every WG's copy, has the identical layout — `画面項目ID` / `画面項目�
 and 6, and `ＩＤ` / `連番` / `日本語` / `ベトナム語` on row 7 at absolute columns 4-7. Confirmed on all
 five files, so **one builder handles all of them and no per-file dump method is needed**:
 
-| Dictionary | Dictionary sheets | Visible sheets that are NOT dictionaries |
-|---|---|---|
-| `_共通` | `XJZ(共通_JAGUR)`, `SJZ(共通_刷新)` | `改訂履歴`, `Sheet1` |
-| `_基準情報` | `XJA(基準_JAGUR)`, `SJA(基準_刷新)` | `改訂履歴` |
-| `_工程管理` | `XJC(工程)`, `SJC(工程)再開発追加分 ` | `改訂履歴`, `Sheet1`, `翻訳リスト` |
-| `_品質管理` | `XJD(品質_JAGUR)`, `SJD(品質_刷新)` | `XJZ(共通)`, `XJA(基準)`, `XJB(受注)`, `XJC(工程)`, `XJE(生産）` (small `A2:K16` scraps), `XJD(品質_状態・区分・ﾌﾗｸﾞ)`, `XJD(品質_ﾘｽﾄﾎﾞｯｸｽ)`, plus the 規格/測定/ﾛｯﾄ管理台帳 sheets |
-| `_受注出荷` | `XJB(受注)`, `SJB(受注)` | `XJZ(共通)`, `XJA(基準)`, `XJC(工程)`, `XJD(品質)`, `XJE(生産）` |
+| Dictionary | Dictionary sheets | Records | Other visible sheets |
+|---|---|---:|---|
+| `_共通` | `XJZ(共通_JAGUR)`, `SJZ(共通_刷新)` | 1,363 | `改訂履歴` |
+| `_基準情報` | `XJA(基準_JAGUR)`, `SJA(基準_刷新)` | 2,319 | `改訂履歴` |
+| `_工程管理` | `XJC(工程)`, `SJC(工程)再開発追加分 ` | 3,289 | `改訂履歴`, `Sheet1`, `翻訳リスト` |
+| `_品質管理` | `XJD(品質_JAGUR)`, `SJD(品質_刷新)` | 1,711 | `改訂履歴` |
+| `_受注出荷` | `XJB(受注)`, `SJB(受注)` | 2,391 | `改訂履歴` |
 
-A sheet-name pattern gets this wrong in **both** directions, and the two failures do not look alike:
+Record counts drift as the masters are edited — the 2,215-record 基準情報 figure quoted under
+*Format* below is an earlier measurement of that same file, not a contradiction.
 
-- **Too narrow, and silent.** A hard-coded `XJC(*`/`SJC(*` matches nothing at all in the 基準情報 and
-  共通 copies. The loop simply never runs and a header-only index is written with no error — which
-  reads downstream as "every ID unregistered", or, once subset, as no findings at all.
-- **Too broad, and noisy.** The obvious per-WG substitution over-matches: `XJD(*` for 品質管理 also
-  picks up `XJD(品質_状態・区分・ﾌﾗｸﾞ)` and `XJD(品質_ﾘｽﾄﾎﾞｯｸｽ)`, neither of which is a dictionary.
-  Likewise `XJC(*` against the 品質管理 or 受注出荷 copy hits that file's small non-dictionary
-  `XJC(工程)` scrap sheet. These at least fail loudly, on the header probe.
+The 品質管理 and 受注出荷 copies also carry sheets named after *other* WGs — `XJZ(共通)`, `XJA(基準)`,
+`XJC(工程)` and so on — which are small `A2:K16` scraps, not dictionaries. **They are all hidden**, so
+skipping non-visible sheets already excludes them; that is why the table above lists only `改訂履歴`.
+Do not rely on their staying hidden, though: header detection excludes them either way.
+
+A sheet-name pattern is what fails here. A hard-coded `XJC(*`/`SJC(*` matches nothing at all in
+**four of the five** files — every copy but 工程管理 names its sheets differently, and the scrap
+sheets that would have matched are hidden. The loop then never runs, a header-only index is written
+with no error, and downstream that reads as "every ID unregistered", or, once subset, as no findings
+at all. A per-WG substitution fixes only the file you thought about; the names vary in ways
+(`_JAGUR`, `_刷新`, a trailing space) that are not guessable from the WG name.
 
 So walk every visible sheet, keep the ones whose header pair resolves, **skip** the ones whose does
-not, and **throw when a whole file yields zero dictionary sheets**. Probe the header band before
+not, and **throw when a whole file yields zero dictionary sheets**. Header detection picks exactly
+the two right sheets in all five files, with nothing to configure. Probe the header band before
 pulling the sheet's values: `翻訳リスト` alone is 7,042 rows that would be read and discarded.
 
 This also disposes of the closed-pattern trap the name-matching approach carried (`"SJC(*)"` failing
@@ -358,6 +364,9 @@ foreach ($sh in $wb.Worksheets) {
     $hp = [Math]::Min($rows, 20)
     $hv = $sh.Range($sh.Cells.Item(1 + $r0, 1 + $c0),
                     $sh.Cells.Item($hp + $r0, $cols + $c0)).Value2
+    # A 1x1 range yields a SCALAR, not a 2-D array, and $hv[$r,$c] would throw on it. An empty
+    # visible sheet is exactly that. None of the five files has one today; this is one line.
+    if ($hv -isnot [array]) { continue }
     $hr = 0; $gc = 0; $nc = 0
     for ($r = 1; $r -le $hp -and -not ($gc -and $nc); $r++) {
         for ($c = 1; $c -le $cols; $c++) {
@@ -367,8 +376,8 @@ foreach ($sh in $wb.Worksheets) {
             elseif ($s -eq '画面項目名' -and $hr -eq $r) { $nc = $c }
         }
     }
-    # No header pair = not a dictionary sheet (改訂履歴, 翻訳リスト, Sheet1, and the non-dictionary
-    # scraps the 品質管理/受注出荷 copies carry under other WGs' names). Skip it, do not throw.
+    # No header pair = not a dictionary sheet (改訂履歴 in every copy, plus Sheet1 and 翻訳リスト in
+    # the 工程管理 one). Skip it, do not throw.
     if (-not ($hr -and $gc -and $nc)) { continue }
     $nSheets++
 
@@ -451,7 +460,11 @@ The index is the artefact you cache; it is not necessarily what an agent should 
 program's REV, filter it to the IDs that program actually cites — 106 of 3,288 records on
 `SXJCB147`, ~1,100 tokens instead of ~28,200 (measured with the earlier, narrower ID filter that the
 paragraph below replaces; the token intersection can only widen a subset). Select those records
-**keeping multi-line records whole**:
+**keeping multi-line records whole**.
+
+Run this **once per index** — a program citing both its own WG's items and shared `XJZ`/`SJZ` ones
+has two indexes and gets two subsets. `$tok` is built from the dump and does not change between
+them, so hoist it out of the loop if you are subsetting more than one.
 
 **Scan only the sheet dumps, never the whole dump directory.** `$dump\*.txt` also matches
 `_DELETED_DIGEST.txt`, whose whole purpose is to hold the content the live dump *removed* — on
@@ -464,26 +477,34 @@ text" finding that `xlsx-excel-com-dump.md` warns about. Filter the `_`-prefixed
 three ways, silently every time:
 
 - **Too narrow.** An ID is `ＩＤ`+`連番` joined, so `MENUXJCP00`, `XJCGXJC101A` and `SJCRSJC006` (the
-  renamed-in-place example above) are all real IDs. On 工程管理, **179 of 3,289 records (5.4%)** have
+  renamed-in-place example above) are all real IDs. On 工程管理, **179 of 3,288 records (5.4%)** have
   a form that pattern cannot match.
 - **`\b` does not fire against Japanese.** .NET counts kana and kanji as word characters, so
   `管理No：XJC8046` and `【SJC8613】` match while `画面項目SJC0600の値` yields nothing at all.
 - **It bakes in one WG's prefixes**, so it needs editing per index — exactly the mistake the routing
   section exists to prevent.
 
-Intersect the dump's ASCII word-runs with the IDs the index already holds instead. The index is the
+Intersect the dump's word-runs with the IDs the index already holds instead. The index is the
 authority on what an ID looks like, so there is nothing to guess: a run bounded by Japanese text is
 still extracted as its own run, a non-dictionary token like the table ID `TXJCM003` simply is not in
 the index and cannot match, and the same code subsets every WG's index unchanged.
+
+**Include full-width alphanumerics in the run, not just ASCII.** `SJCGSJC30８A` on
+`SJC(工程)再開発追加分 ` row 60 carries a full-width `８`; an ASCII-only class splits it into
+`SJCGSJC30` and `A` and the record can never be selected. It is one ID in 3,288 and very likely a
+data-entry slip in the dictionary — but a subsetter that silently drops it is how such a slip stays
+invisible. `０-９`, `Ａ-Ｚ` and `ａ-ｚ` cover the full-width digits and
+letters. (No dictionary ID is shorter than 7 characters, so the `{4,}` floor is safe.)
 
 ```powershell
 $sheetDumps = (Get-ChildItem -LiteralPath $dump -Filter '*.txt' |
                Where-Object { -not $_.Name.StartsWith('_') }).FullName
 if (-not $sheetDumps) { throw "no sheet dumps under $dump" }
 $tok = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+$runs = '[0-9A-Za-z_０-９Ａ-Ｚａ-ｚ]{4,}'   # ASCII + full-width 0-9 A-Z a-z
 foreach ($f in $sheetDumps) {
     $text = [IO.File]::ReadAllText($f, [Text.Encoding]::UTF8)
-    foreach ($m in [regex]::Matches($text, '[0-9A-Za-z_]{4,}')) { [void]$tok.Add($m.Value) }
+    foreach ($m in [regex]::Matches($text, $runs)) { [void]$tok.Add($m.Value) }
 }
 $idx  = [IO.File]::ReadAllLines($indexPath, [Text.Encoding]::UTF8)
 
