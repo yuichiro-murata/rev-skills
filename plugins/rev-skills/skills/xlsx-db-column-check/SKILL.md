@@ -1,6 +1,6 @@
 ---
 name: xlsx-db-column-check
-description: Check whether a function-definition Excel doc (機能定義書/画面設計書/更新条件表) references DB columns that don't actually exist in the corresponding table-layout (テーブルレイアウト) Excel files. Distinct from design-doc-io-table-check, which checks whether a table is *declared* in the Ⅲ．入出力定義 CRUD list at all — this skill instead checks whether the *columns* referenced within an already-used table actually exist. Also flags a project-specific anti-pattern in 検索条件保存マスタ-style generic tables (e.g. TXJAM100): persisting both a master-entity code (品目コード等) AND its master-derived display name (KC品名等) together, when only the code should be stored and the name should come from a JOIN at read-time. Use when the user asks to verify a program's design doc against DB/file design docs, e.g. "このファイルが使っているカラムが、DB設計書のファイルに存在するか確認して" or "存在しないカラムを使っていたら教えて". When the user asks to REV a single design-doc workbook without naming which checks they want, the entry point is `rev-program-review`: it first asks the user, checkbox-style, which of the 6 single-program checks to run, then runs only those as one combined pass. Do not launch all six yourself. Run this skill standalone only when it was one of the selected checks, or when the user asked for this check by name.
+description: Check whether a function-definition Excel doc (機能定義書/画面設計書/更新条件表) references DB columns that don't actually exist in the corresponding table-layout (テーブルレイアウト) Excel files. Distinct from design-doc-io-table-check, which checks whether a table is *declared* in the Ⅲ．入出力定義 CRUD list at all — this skill instead checks whether the *columns* referenced within an already-used table actually exist. Also flags a project-specific anti-pattern in 検索条件保存マスタ-style generic tables (e.g. TXJAM100): persisting both a master-entity code (品目コード等) AND its master-derived display name (KC品名等) together, when only the code should be stored and the name should come from a JOIN at read-time — but ONLY when the screen shows that name as a Label; a name the user types into a TextBox is an independent search condition and persisting it is correct. Use when the user asks to verify a program's design doc against DB/file design docs, e.g. "このファイルが使っているカラムが、DB設計書のファイルに存在するか確認して" or "存在しないカラムを使っていたら教えて". When the user asks to REV a single design-doc workbook without naming which checks they want, the entry point is `rev-program-review`: it first asks the user, checkbox-style, which of the 6 single-program checks to run, then runs only those as one combined pass. Do not launch all six yourself. Run this skill standalone only when it was one of the selected checks, or when the user asked for this check by name.
 ---
 
 # xlsx-db-column-check
@@ -204,9 +204,51 @@ whether any name-type label in the same 更新条件表 shares that stem (`作�
 the `品目`/`KC品名` case specifically, treat `KC品名` as `品目`'s paired name even though the surface
 text doesn't share the stem literally (this pairing is specific to this project's terminology: `KC`
 prefix names are this project's product-name field for a 品目ｺｰﾄﾞ). A code+name pair that are **both**
-actually persisted (neither is `-`) is the violation — flag it. A code-type label whose paired name
-is annotated "(区分値のみ)" or has no persisted name-type sibling at all is correctly designed — don't
-flag it.
+actually persisted (neither is `-`) is a *candidate*, not yet a finding — it must still clear the
+control-type gate below. A code-type label whose paired name is annotated "(区分値のみ)" or has no
+persisted name-type sibling at all is correctly designed — don't flag it.
+
+**MANDATORY control-type gate — a persisted name is only a violation when the screen shows that name
+as a Label.** Per explicit user direction, this gate decides the finding and there is no exception to
+it. Before reporting any candidate pair, look the **name** item up by 画面項目名 in that screen's
+`Ⅴ．画面項目定義` and read its 属性 (control-type) column — in the standard layout it is array column
+18, with `画面項目名` at column 5 and 初期値 at column 36; resolve it by the row-465-style header
+labels rather than trusting those positions:
+
+- **属性 = `Label`** (or otherwise display-only) → the name is *derived from the code* via a master
+  lookup and has no independent existence. Persisting it duplicates master data. **This is the
+  finding.**
+- **属性 = `TextBox`** (or any editable input: ComboBox a user picks, etc.) → the name is **its own
+  independent search condition** that the user types, not a master-derived echo of the code. The
+  program must persist it, because it is part of the filter the user entered and there is nothing to
+  JOIN it back from — a partial/LIKE name search has no code to re-derive it. **Persisting it is
+  correct. Do not flag it.**
+
+The surface text is identical in both cases (`工程ｺｰﾄﾞ` + `工程名` persisted side by side), so a
+name-pairing scan alone cannot tell a real defect from correct design. Skipping the gate turns every
+screen that offers name-based text search into a page of false findings.
+
+Confirmed for real on `PXJCO128_ﾛｯﾄ停止指示登録.xlsx`, where the gate flips the verdict on all four
+candidates and the design turns out to be **entirely correct and internally consistent**:
+
+| 画面項目 (`画面設計書(GXJC128A)` Ⅴ) | 属性 | TXJAM100 に保存? | 判定 |
+|---|---|---|---|
+| ﾛｯﾄ停止指示者名 `[484,5]` | TextBox | 保存 `[40,36]` | 正 — 独立した検索条件 |
+| 工程名 `[487,5]` | TextBox | 保存 `[42,36]` | 正 — 独立した検索条件 |
+| 停止者名 `[492,5]` | TextBox | 保存 `[45,36]` | 正 — 独立した検索条件 |
+| 解除者名 `[501,5]` | TextBox | 保存 `[50,36]` | 正 — 独立した検索条件 |
+| 停止工程GRP名 `[479,5]` | **Label** | 保存せず | 正 — ｺｰﾄﾞのみ保存 |
+| 取引先名 `[508,5]` | **Label** | 保存せず | 正 — ※1復元表 `[538,17]` が `(2).取引先略式名` から再取得 |
+
+The two Labels are exactly the ones left out of the persisted set, and `取引先名`'s restore rule
+points at a delegated master lookup rather than a saved 項目N — the read-time-JOIN discipline this
+rule is about, applied correctly. A review that reported the four TextBox names as redundant
+persistence (as one did before this gate was written) is producing false findings on a correct
+design.
+
+Note this also makes `PSJCO304`'s confirmed violation above stronger evidence rather than weaker:
+re-check those pairs' 属性 before citing them, and cite the 属性 in the finding itself so the designer
+can see the gate was applied.
 
 Confirmed for real on `PSJCO304_着手ﾒｯｾｰｼﾞﾒﾝﾃﾅﾝｽ.xlsx`, 更新条件表(TXJAM100): items 6/7 both persist
 `作業場ｺｰﾄﾞ` *and* `作業場名`, items 10/11 both persist `工程ｺｰﾄﾞ` *and* `工程名`, items 12/13 both
