@@ -93,7 +93,10 @@ to the next one unless the user says "同じ観点で" or similar.
    **and** one or more older snapshots under `.claude/plugins/cache/rev-skills/<version>/...`. Always
    read the **marketplace** copy: the cache lags behind it, and a stale cached copy has already cost
    a run — the `PSJCO309` dump failed on the `Add-Type` CS0675 bitwise-or error that the marketplace
-   copy documents a fix for but the cached `1.1.1` copy predates.
+   copy documents a fix for but the cached `1.1.1` copy predates. The cache is keyed on the
+   `version` in `.claude-plugin/plugin.json`, so editing a skill without bumping that version leaves
+   every cached copy stale **forever** — the loader sees a version it already has and never re-copies.
+   Bump the version in the same commit as any skill-content change.
 2. **Build the reference-master index in the same pre-launch step, if a selected check needs it** —
    see `_shared/reference-index.md`. Today only `design-doc-internal-consistency` does (the
    画面項目辞書 index). That doc instructs the *agent* to stop rather than build it, so skipping this
