@@ -43,6 +43,94 @@ reproduced by hand. Load with `openpyxl.load_workbook(path, keep_vba=True)` and 
 | ﾁｪｯｸ処理設計書（各画面） | 設計書の同名シートを転記＋判定欄を追加 |
 | 更新確認 | 更新条件表 各シートの「更新条件」欄 ＋ 機能定義書 Ⅲ．入出力定義(CRUD) |
 
+## 書式は生成と同時に当てる（後から直すな）
+
+**ゼロから書き起こす3シート（`ﾃｽﾄ仕様` 以外の `項目・ｽﾞｰﾑ制御の確認`／`画面項目制御の確認`／
+`更新確認`）は、値を入れる処理と同じループで罫線・塗り・件数式まで当てきること。** 値だけ先に
+書いて書式は後回しにすると、必ず「値のあるセルにだけ罫線と色が付いた、枠が右側で開いた表」に
+なる。PSJCO501 初版で実際にそうなり、利用者から「セル結合とか枠線が汚い」と指摘された。
+`更新確認` はテンプレートが 1 行あたり 11〜12 セルに罫線を持つのに 3 セルしかなく、シート合計で
+423 → 107 セルまで落ちていた。
+
+### 何が「1セル単位で書くと壊れる」のか
+
+この3シートの表は、**列方向に幅を持つグループ**の集まりでできている
+（`更新確認` なら `条件` n列 ＋ `更新対象` m列 ＋ `判定` 1列、`画面項目制御の確認` なら
+`条件` ＋ `想定結果` ＋ `判定` で C〜G 固定）。見出しセルの文字は先頭列にしか入らないが、
+**罫線と塗りはグループの列幅いっぱいに及ぶ**。だから書式はセルではなく
+**「ブロック×グループ」の矩形範囲**に対して当てる。グループの列幅は対象プログラムごとに
+変わるので、テンプレートの列数をコピーせず、自分が並べたテーブル列数から毎回計算する。
+
+### 罫線
+
+矩形範囲に対して: 外周 `medium` / 内側 `thin` / グループ境界の縦線 `medium`
+（`画面項目制御の確認` の `条件`｜`想定結果` 境界のみ `thin`）/ 小見出し行の下端 `medium`。
+`判定` 列は見出し行と小見出し行をまたぐ 1 つのラベルなので、その 2 行の間の横線は消す。
+**見出し行（`条件`/`更新対象`/`判定` のラベル行）はグループ内部の縦線を消すこと** —
+残すとラベルの文字を縦線が突き抜ける。
+
+### 塗り
+
+テンプレート 502 で検証した規則。`更新確認`（表は D 列〜判定列）:
+
+| 行 | 列範囲 | 塗り |
+|---|---|---|
+| 見出し行・小見出し行 | `条件` グループ | `FFCCFFCC`（緑・RGB 直指定） |
+| 見出し行・小見出し行 | `更新対象` グループ | テーマ色 OOXML 3 / tint 0.8 |
+| 見出し行・小見出し行 | `判定` 列 | `FFFFC000`（橙・RGB 直指定） |
+| 明細行 | D〜判定列-1 | テーマ色 OOXML 9 / tint 0.8 |
+| 明細行 | 値が `-` のセル | テーマ色 OOXML 0 / tint -0.35（グレーアウト） |
+| 明細行 | `判定` 列 | 塗りなし |
+
+`画面項目制御の確認`（表は C〜G 固定）: 見出し・小見出し行 C〜F = OOXML 3 / 0.8、`判定`(G) =
+`FFFFC000`、明細行 C〜F = OOXML 9 / 0.8、`判定`(G) = OOXML 0 / 0.0（白）。
+`項目・ｽﾞｰﾑ制御の確認`: 見出し行 OOXML 3 / 0.8、明細 OOXML 9 / 0.8、`-` セルは OOXML 0 / -0.35。
+
+### 件数セルは数式で入れる
+
+計算済みの数値を直接書くと、実施時に判定欄を埋めても件数が追従しない。参照範囲だけを自分の
+行位置に張り替えて、必ず数式で入れる:
+
+- `更新確認`: ブロック件数 = `=COUNTIF($<判定列>$<明細先頭>:$<判定列>$<明細末尾>,"<>-")`、
+  シート合計 `I1` = 各ブロック件数の和
+- `画面項目制御の確認`: `L<見出し行-1>` = `=COUNTIF($G$<先頭>:$G$<末尾>,"<>-")`、
+  `K<画面行>` = その画面の `L` セルの和、`K1` = 各 `K` の和
+- `項目・ｽﾞｰﾑ制御の確認`: `I<n>` = `=COUNTIF($D$<先頭>:$I$<項目末尾>,"<>-")`、
+  `P<n>` = `=COUNTIF($M$<先頭>:$P$<ｽﾞｰﾑ末尾>,"<>-")`、`D<n>` = `=I<n>+P<n>`、`D1` = 各 `D` の和
+
+`COUNTIF(範囲,"<>-")` は空白セルも数えるので、判定欄が未記入のうちは「明細行数」と一致する。
+数式を入れたら**キャッシュ値が入れようとしていた数値と一致することを確認**する（一致しなければ
+参照範囲がずれている）。
+
+### 当てる手段は Excel COM
+
+この仕様書には openpyxl が読み込み時に落とす wmf 画像が含まれている
+(`UserWarning: wmf image format is not supported so the image is being dropped`)。
+openpyxl で `load_workbook`→`save()` すると**その画像が消える**。値の書き込みまでは openpyxl で
+よいが、罫線・塗りは COM で `Range.Borders` / `Interior` に矩形範囲ごと一括で当てること。
+セルを 1 個ずつ回すより速く、テンプレートのセル単位のゆらぎも持ち込まない。
+
+COM 実行時の罠（すべて実際に踏んだもの）:
+
+- **`Interior.ThemeColor` は OOXML の index+1。** `Excel 1→OOXML 0` / `2→1` / `3→2` / `4→3` /
+  `10→9`。`xlThemeColorDark1=1 / xlThemeColorLight1=2` という名前から素直に対応させると 1 つ
+  ずれる。この取り違えで、テンプレートが「白・背景1 の 35%（グレー）」の箇所を
+  「黒・テキスト1」で塗り潰しかけた。当てた後に openpyxl で `fill.start_color.theme` /
+  `.tint` を読み直してテンプレートと突き合わせるまで完了とみなさない。迷ったら捨てコピーに
+  ThemeColor 1〜10 を書いて読み直す実測（30秒で済む）。
+- `Interior.ThemeColor` / `TintAndShade` への代入は `InvalidCastException` で落ちることがある。
+  `$i.ThemeColor=[int]$tc; $i.TintAndShade=[double]$ts` と明示キャストする。
+- **スクリプトは ASCII のみにする。** UTF-8 のまま `powershell -Command -` に流し込むと ANSI と
+  して解釈され、日本語のパス・シート名が化けて `Workbooks.Open` が失敗する。ファイルは ASCII
+  パス（スクラッチパッド）にコピーして作業し、シートは名前ではなく**インデックス**で指定する。
+  取り違え防止に `if ($ws.Range('I1').Value2 -ne 23) { throw }` のような既知の値でのアサートを
+  各シートの先頭に入れる。
+- stdin 経由だと `$ErrorActionPreference='Stop'` は**文ごと**にしか効かず、途中で失敗しても
+  最後の `Write-Output 'DONE'` まで走って保存されてしまう。書式パスは常に**バックアップから
+  やり直せる冪等な形**で書き、成功表示ではなく openpyxl での再検証で合否を判断する。
+- `Chart.Export` による PNG 化は、1 プロセスで複数領域を続けて出すと 2 個目以降が数百バイトの
+  空画像になることがある。**1 領域につき Excel プロセスを 1 つ**にすると安定する。
+
 ## Step 1 — 画面構成を確定する
 
 Parse each `画面設計書(<画面ID>)` sheet. Locate the sections by scanning column B for a heading that
@@ -66,7 +154,8 @@ blocks the region names — those two lists drive the ﾃｽﾄ仕様 item list.
 ## Step 2 — 項目・ｽﾞｰﾑ制御の確認
 
 For every 画面 × 領域 (excluding `共通`), emit one block. The sheet has **no merged cells** — it is
-plain rows — so it can be written entirely with openpyxl.
+plain rows — so the values can be written entirely with openpyxl. 罫線・塗り・件数式は
+「書式は生成と同時に当てる」の規則どおり、このステップの中で一緒に当てる。
 
 Block layout (row offsets from the block header row):
 
@@ -120,6 +209,8 @@ From Ⅳ, an item whose name contains `ｽﾞｰﾑ` and whose 処理内容 matc
 
 - 領域ブロックの件数 = 項目制御の `OK` セル数 ＋ ズーム件数 × 4（起動/ﾊﾟﾗﾒｰﾀ反映/戻り値反映/ﾌｫｰｶｽ位置）
 - シート冒頭(D1)の全体件数 = 各ブロック件数の合計
+- **セルに入れるのは数値ではなく `COUNTIF` の数式**（「件数セルは数式で入れる」参照）。
+  上の数え方は、その数式のキャッシュ値が合っているかを検算するための式と考える。
 
 A good sanity check: a 領域 that is structurally identical to the template program's should produce
 the same count (A画面 G1)検索条件領域 came out 45 for both 501 and 502).
@@ -133,6 +224,8 @@ Typical axes seen: `明細 0件/0件以外`, `処理区分 "1"(新規登録)/"2"
 `ﾛｸﾞｲﾝ情報.作業者ｺｰﾄﾞ NULL/NULL以外`, `明細表示ﾌﾗｸﾞ 該当ﾃﾞｰﾀあり/なし`, `新規 ﾁｪｯｸなし/あり`.
 
 想定結果 is always the literal `基本設計書記載の内容と一致`; the 判定 column stays empty.
+表は C〜G 固定。罫線・塗り・件数式は「書式は生成と同時に当てる」の規則どおり、このステップの
+中で一緒に当てる。
 
 **This sheet needs human review.** Turning a ※ note into a set of condition patterns is a judgment
 call, not a mechanical transform — a note like「共通ﾕｰｻﾞｰではない かつ 明細行を表示している場合のみ○」
@@ -264,6 +357,19 @@ contain NCRN numbers — match on the template program's identifiers, not on `NC
 Render the sheets to PNG via Excel COM and actually look at them, including the rows around every
 insertion boundary.
 
+### 6. 罫線・塗り・件数式（規則は「書式は生成と同時に当てる」を見る）
+
+ここでは**当て直すのではなく、当たっていることを数えて確認する**。値の有無ではなく罫線を持つ
+セル数を、テンプレートの同種行と突き合わせる:
+
+```python
+nb = sum(1 for c in row if c.border and (c.border.left.style or c.border.right.style
+                                         or c.border.top.style or c.border.bottom.style))
+```
+
+塗りは `fill.start_color`（`rgb` / `theme`+`tint`）をブロック×グループ単位でテンプレートの
+規則表と全セル突き合わせ、差分 0 を確認する。件数式はキャッシュ値が期待値と一致することを確認。
+
 ## 実装上の罠（すべて実際に踏んだもの）
 
 - **openpyxl の `MergedCell` は書き込み不可。** `cell.value = x` が `AttributeError` で落ちる。書く前に
@@ -277,7 +383,8 @@ insertion boundary.
 - **`Chart.Paste()` の前後に待ちを入れる。** `CopyPicture` 直後に貼ると空の画像が出力される
   （700ms 程度の `Start-Sleep` で解消）。真っ白なレンダリング結果を見たらまずこれを疑う。
 - **COM セッション後は `EXCEL` プロセスを止める。** 残っているとファイルがロックされ、次の
-  openpyxl の `save()` が素の permission error で落ちる。
+  openpyxl の `save()` や書き戻しが permission error / `Device or resource busy` で落ちる。
+  止めるのは `MainWindowTitle` が空のものだけ（利用者が開いている Excel を殺さないため）。
 - **`Add-Type` / スクリプト実行の制約**: この環境の Cylance Script Control は `.ps1` ファイルの実行を
   ブロックする。PowerShell はインラインで渡すこと。`[\/:*?"<>|]` という文字クラスをコマンドに
   含めると、安全ガードが誤検知してコマンド全体が拒否される。
