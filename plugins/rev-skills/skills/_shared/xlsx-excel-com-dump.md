@@ -390,6 +390,95 @@ $summary -join "`n"
 $skippedSheets -join "`n"   # a suspiciously large row count on a skipped 詳細設計書 sheet is a signal naming-standard-compliance may need to check its content directly
 ```
 
+## When Excel refuses to open the workbook at all (0x800A03EC)
+
+Occasionally `$excel.Workbooks.Open(...)` fails on one specific design-doc workbook with
+`Workbooks クラスの Open プロパティを取得できません。` / HRESULT `0x800A03EC`, while every other
+workbook in the same folder opens fine from the same COM instance. This is **not** a COM quirk, a
+busy-Excel problem or a filename problem — it means Excel's loader is rejecting the file's content.
+Confirmed for real on `SXJCB147_処置指示発行(ｻﾌﾞﾌﾟﾛ).xlsx` (工程管理/PHASE3), where it cost a long
+diagnostic detour before the cause was found.
+
+**The known cause: an out-of-range `<rPh>` (ふりがな) offset in `xl/sharedStrings.xml`.** When an
+author shortens a cell's text but Excel doesn't refresh the phonetic-guide runs attached to it, the
+saved `<si>` keeps `<rPh sb="…" eb="…">` offsets that point past the end of the (now shorter) `<t>`
+text. Excel validates these at load and refuses the whole workbook. On `SXJCB147` the offending
+entry was:
+
+```xml
+<si><t>「4.処置指示工程」に1件のみ存在</t>          <!-- 17 characters -->
+  <rPh sb="26" eb="27"><t>ケン</t></rPh>            <!-- offsets 26/27 and 29/31 are past the end -->
+  <rPh sb="29" eb="31"><t>ソンザイ</t></rPh>
+  <phoneticPr fontId="31"/></si>
+```
+
+**Don't chase the usual suspects first — they were all ruled out on that file** and each cost a
+round trip: `unzip -t` reports no error, every XML part is well-formed (`XmlReader` over all
+`.xml`/`.rels` entries passes), no `<fileSharing>`/`<workbookProtection>`, no Mark-of-the-Web ADS,
+no `~$` lock file, no entry in Excel's `Resiliency\DisabledItems`, the sheet/rels/Content_Types
+cross-references are all complete, and the file opens no better with `CorruptLoad` set to
+`xlRepairFile` (1) or `xlExtractData` (2), with `UpdateLinks=0`, from a renamed ASCII-named copy, or
+after stripping `calcChain.xml` or all twelve dead `externalLinks`. Copying the file elsewhere
+doesn't help either — it is the content, not the path or the environment.
+
+### Diagnosing it
+
+Scan every `<si>` and compare each `<rPh>`'s `sb`/`eb` against the length of that entry's own text
+(the concatenation of its `<t>` elements **outside** any `<rPh>` block — for a rich-text `<si>`,
+concatenate the `<r><t>` runs). Anything with `eb > len`, `sb > len` or `sb >= eb` is a candidate:
+
+```powershell
+$ss = [System.IO.File]::ReadAllText($extractedSharedStringsPath, [System.Text.Encoding]::UTF8)
+$body  = $ss.Substring($ss.IndexOf("<si>"), $ss.LastIndexOf("</sst>") - $ss.IndexOf("<si>"))
+$items = @([regex]::Matches($body, "<si>.*?</si>", 'Singleline') | ForEach-Object { $_.Value })
+for ($i = 0; $i -lt $items.Count; $i++) {
+    $noRph = [regex]::Replace($items[$i], '<rPh\b.*?</rPh>', '', 'Singleline')
+    $len = (([regex]::Matches($noRph, '<t(?:\s[^>]*)?>(.*?)</t>', 'Singleline') |
+             ForEach-Object { $_.Groups[1].Value }) -join '').Length
+    foreach ($m in [regex]::Matches($items[$i], '<rPh\s+sb="(\d+)"\s+eb="(\d+)"')) {
+        $sb = [int]$m.Groups[1].Value; $eb = [int]$m.Groups[2].Value
+        if ($eb -gt $len -or $sb -gt $len -or $sb -ge $eb) { "[$i] len=$len sb=$sb eb=$eb :: $($items[$i])" }
+    }
+}
+```
+
+If that scan comes back empty, bisect instead: rebuild the workbook with parts progressively
+replaced by valid stubs (stub every `xl/worksheets/sheetN.xml` down to
+`<worksheet …><sheetData/></worksheet>`, minimise `styles.xml`, drop `<definedNames>`, remove
+`xl/drawings`+`xl/media`+`xl/printerSettings`+`xl/worksheets/_rels`+`xl/sharedStrings.xml`, adjusting
+`[Content_Types].xml` and `xl/_rels/workbook.xml.rels` to match) until it opens, then add groups back
+one at a time. **Before trusting a single bisect result, rezip a workbook that is known to open and
+confirm your rebuild method itself produces an openable file** — `zip -q -r -X out.xlsx
+'[Content_Types].xml' _rels docProps xl` from the extracted tree is verified to work. Skipping that
+control makes every "still fails" result meaningless. Binary-searching within `sharedStrings.xml`
+(keep entries `[lo,hi]` original, stub the rest, swap the part in via
+`[System.IO.Compression.ZipFile]::Open($f,'Update')`) localises the entry in ~12 opens; use
+`[Math]::Floor(($lo+$hi)/2)` for the midpoint — PowerShell's `[int]` cast does banker's rounding and
+turns `[2831,2832]` into an infinite loop.
+
+### Repairing it, and what to tell the user
+
+**Repair a copy in the scratchpad and dump from that; never rewrite the user's design doc without
+asking.** The fix is to delete just the offending `<rPh>` elements (or the `<si>`'s phonetic runs
+entirely) — no cell value, font, or merge is affected, so a formatting scan run against the repaired
+copy is still valid for the original:
+
+```powershell
+Copy-Item -LiteralPath $original -Destination $repaired -Force
+$ss = $ss.Replace($badSi, $badSiWithoutRph)
+$za = [System.IO.Compression.ZipFile]::Open($repaired, 'Update')
+$za.GetEntry("xl/sharedStrings.xml").Delete()
+$sw = New-Object System.IO.StreamWriter($za.CreateEntry("xl/sharedStrings.xml").Open(),
+                                        (New-Object System.Text.UTF8Encoding($false)))
+$sw.Write($ss); $sw.Dispose(); $za.Dispose()
+```
+
+Then run the normal dump against the repaired copy, tell every downstream agent that the original is
+corrupt so none of them wastes time trying to open it, and cite findings against the **original**
+path. Report the corruption to the user as a finding in its own right — a design doc nobody can open
+in Excel is a bigger problem than anything the REV itself will turn up — and ask before writing the
+fix back to the original file.
+
 ## UsedRange-relative vs sheet-absolute coordinates
 
 `$used.Value2` is indexed from 1 **within the UsedRange**; `$ws.Cells.Item(r,c)` is absolute on the
