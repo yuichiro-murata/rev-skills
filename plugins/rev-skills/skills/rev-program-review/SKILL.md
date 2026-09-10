@@ -88,6 +88,12 @@ to the next one unless the user says "同じ観点で" or similar.
    `**/rev-skills/**/skills/_shared/xlsx-excel-com-dump.md` if the path doesn't resolve. (Exception:
    `design-doc-formatting-consistency` still needs live Excel COM access for its font/merge scan;
    only the bulk text dump is shared.)
+   `**/rev-skills/**/skills/_shared/xlsx-excel-com-dump.md` typically matches several copies — the
+   git-tracked marketplace copy (`.claude/plugins/marketplaces/rev-skills/plugins/rev-skills/...`)
+   **and** one or more older snapshots under `.claude/plugins/cache/rev-skills/<version>/...`. Always
+   read the **marketplace** copy: the cache lags behind it, and a stale cached copy has already cost
+   a run — the `PSJCO309` dump failed on the `Add-Type` CS0675 bitwise-or error that the marketplace
+   copy documents a fix for but the cached `1.1.1` copy predates.
 2. **Build the reference-master index in the same pre-launch step, if a selected check needs it** —
    see `_shared/reference-index.md`. Today only `design-doc-internal-consistency` does (the
    画面項目辞書 index). That doc instructs the *agent* to stop rather than build it, so skipping this

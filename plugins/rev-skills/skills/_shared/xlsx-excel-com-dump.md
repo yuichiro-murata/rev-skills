@@ -148,6 +148,35 @@ pays off most on the largest sheets. `ScreenUpdating`/`EnableEvents`/`Calculatio
 tested and made no difference to `Workbooks.Open` time (~5.2-5.9s either way, fixed COM overhead) —
 only the formatting loop is worth optimizing.
 
+**`Add-Type` on this machine compiles with warnings-as-errors, so the cell-coordinate key must cast
+`c` to an unsigned type before the bitwise OR.** Write `long key = ((long)r << 20) | (long)(uint)c;`
+— the shorter `| (long)c` fails to compile with CS0675 ("Bitwise-or 演算子が sign-extended オペランド
+で使用されています"), which aborts `Add-Type` entirely and then every `[XlsxDumpHelper]::` call throws
+`TypeNotFound`. The failure mode is deceptive: the script keeps running past the errors, so
+`Workbooks.Open` succeeds and the per-sheet `.txt` files are written **empty**, and the summary line
+still prints a plausible `rows x cols` for each sheet. Verify `Add-Type` compiled (it prints nothing
+on success) before trusting any dump; if in doubt, compile the helper in its own PowerShell call
+first and check it emits no error.
+
+**Never put the character-class literal `[\/:*?"<>|]` in a PowerShell command — build the safe
+sheet filename another way.** Confirmed for real while dumping `PSJCO309_焼成入炉帳ｻﾔ組み.xlsx`: the
+template's own `$safe = ($n -replace '[\/:*?"<>|]','_')` line makes this environment's
+destructive-operation safety guard reject the **entire** command, with a misleading error that names
+an operation the script never performs — `Remove-Item on system path '*' is blocked. This path is
+protected from removal.` Nothing is executed, so it reads like an environment fault rather than a
+one-line lint problem, and it cost several full retries of a 30-sheet dump to localize (bisecting
+the script section by section) before the culprit was found. The guard is reacting to the `*` and
+`?` inside the class, not to anything the script does. Use the invalid-character list instead, which
+carries no wildcard literals and is also more correct:
+
+```powershell
+$safe = [string]::Join('_', $n.Split([System.IO.Path]::GetInvalidFileNameChars()))
+```
+
+The scripts below already use this form. If you paste a script from anywhere else and hit the
+"Remove-Item on system path" error, look for this literal first rather than assuming the guard is
+objecting to `Workbooks.Open`, `$wb.Close($false)` or `$excel.Quit()`.
+
 ```powershell
 Add-Type @"
 using System;
@@ -188,7 +217,7 @@ public static class XlsxDumpHelper {
         for (int r = 1; r <= rows; r++) {
             var parts = new List<string>();
             for (int c = 1; c <= cols; c++) {
-                long key = ((long)r << 20) | (long)c;
+                long key = ((long)r << 20) | (long)(uint)c;
                 if (dead.Contains(key)) continue;
                 string s = live.ContainsKey(key) ? live[key] : Cell(arr, vals, r, c, rows, cols);
                 if (s != null && s.Length > 0) parts.Add("[" + (r + r0) + "," + (c + c0) + "]=" + s);
@@ -310,7 +339,7 @@ foreach ($ws in $wb.Worksheets) {
         }
     }
 
-    $safe = ($n -replace '[\\/:*?"<>|]','_')
+    $safe = [string]::Join('_', $n.Split([System.IO.Path]::GetInvalidFileNameChars()))
     $text = [XlsxDumpHelper]::FormatSheetLive($vals, $rows, $cols, $dead, $liveMap, $r0, $c0)
     [System.IO.File]::WriteAllText((Join-Path $out ($prefix + "_" + $safe + ".txt")), $text, [System.Text.Encoding]::UTF8)
     $summary += "$n`t$($used.Rows.Count)x$($used.Columns.Count)`tdead=$nDead`tpartial=$nPart"
@@ -596,7 +625,7 @@ public static class XlsxDumpHelperCache {
     $dumpedSheetNames = @()
     foreach ($ws in $targetSheets) {
         $dumpedSheetNames += $ws.Name
-        $safeName = ($ws.Name -replace '[\\/:*?"<>|]', '_')
+        $safeName = [string]::Join('_', $ws.Name.Split([System.IO.Path]::GetInvalidFileNameChars()))
         $file = Join-Path $cacheDir ("$safeName.txt")
         $used = $ws.UsedRange
         $rows = [Math]::Min($used.Rows.Count, 3000)
@@ -767,7 +796,7 @@ public static class XlsxDumpHelperBatch {
         $dumpedSheetNames = @()
         foreach ($ws in $targetSheets) {
             $dumpedSheetNames += $ws.Name
-            $safeName = ($ws.Name -replace '[\\/:*?"<>|]', '_')
+            $safeName = [string]::Join('_', $ws.Name.Split([System.IO.Path]::GetInvalidFileNameChars()))
             $file = Join-Path $info.CacheDir ("$safeName.txt")
             $used = $ws.UsedRange
             $rows = [Math]::Min($used.Rows.Count, 3000)
@@ -979,6 +1008,29 @@ correctly-named group matched the live design doc's codes perfectly. Always copy
 verbatim from the design doc's own delegation note (including any parenthesized qualifier) and match
 it exactly against the 区分名称 sheet's group-header cells, rather than fuzzy/keyword-matching the
 first similarly-named group found.
+
+## Seeing the actual screen layout (画面設計書 Ⅰ.画面ﾚｲｱｳﾄ)
+
+The `Ⅰ.画面ﾚｲｱｳﾄ` section's cells are **empty in every dump** — the layout is a floating picture, not
+cell content, so a text dump can never show it. When a check needs the visual layout (item placement,
+which group frame an item sits in, whether a control is drawn at all), get the picture instead:
+
+- **Do not** try `Range.CopyPicture` + `ChartObjects().Add` + `Chart.Paste` + `Chart.Export`. It runs
+  without error against an invisible Excel instance but writes ~200-byte blank PNGs, because the
+  clipboard round-trip does not work headless. (`$ws.ChartObjects` also needs the parenthesised
+  `$ws.ChartObjects()` form in PowerShell, or `.Add` reports "does not contain a method named 'Add'".)
+- **Do** unzip the workbook and read `xl/media/` directly — no Excel at all:
+  `[System.IO.Compression.ZipFile]::OpenRead($xlsx)`, then extract entries under `xl/media/`.
+  The layouts are usually `.emf` (vector); convert each with
+  `System.Drawing.Imaging.Metafile` → `Bitmap` → `Save(...,ImageFormat::Png)` at ~1.6x scale, then
+  Read the PNG. `.png` entries in the same folder are typically pasted screenshots of the *old*
+  (JAGUR-era) screen from the `画面ｲﾒｰｼﾞ*` sheet, often carrying review annotations — useful history,
+  but not the current design; the `.emf` files are the current layout.
+- Map picture → sheet by listing `$ws.Shapes` per sheet (`Type=13` is a picture) and comparing
+  `Top`/`Width`/`Height` against the media entries' sizes; a 画面設計書 sheet typically holds one
+  picture for the main screen plus one per 明細の続き strip.
+
+`pdftoppm` is not installed, so exporting a sheet to PDF and reading its pages does not work either.
 
 ## Operational notes
 
