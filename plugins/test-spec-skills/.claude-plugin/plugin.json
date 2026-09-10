@@ -1,0 +1,8 @@
+{
+  "name": "test-spec-skills",
+  "description": "総合テスト仕様書作成のスキル集 — 設計書（機能定義書/画面設計書/ﾁｪｯｸ処理設計書/更新条件表）から総合テスト仕様書／報告書(.xlsm)を生成する",
+  "version": "1.0.0",
+  "author": {
+    "name": "yuichiro-murata"
+  }
+}
