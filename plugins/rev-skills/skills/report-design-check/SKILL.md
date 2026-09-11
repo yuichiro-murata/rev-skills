@@ -105,7 +105,10 @@ slots, not registrations.
 `_shared/reference-index.md`'s `LiveText` cascade. This exact registry is where the mistake was made
 for real: `RSJC033` and `RSJC035` were reported as 帳票一覧未登録 by three separate agents when their
 rows existed and had merely been renamed (`前工程処置指示書（CP1,CMOS）` → `処置指示書(前工程)`). Drop a
-row only when the **帳票ID** cell has no live text left.
+row only when the **帳票ID** cell has no live text left. With the cascade applied, those two rows
+come back with their live names and `備考 = 処置指示発行(ｻﾌﾞﾌﾟﾛ)`, and the genuinely withdrawn rows
+(`RXJC037`-`RXJC039`, `RXJC043`, `RSJC034`, `RSJC036`, all struck and annotated `削除`) drop out on
+their own — which is exactly the split C1 needs.
 
 ### 3. Run the checks
 
@@ -115,36 +118,61 @@ registered, and a registry row attributed to this program with no 帳票設計�
 that was dropped from the design without being withdrawn from the registry — check whether the sheet
 exists as `bk_` before calling it missing). Also compare 帳票名称: registry vs the sheet's `[4,15]`.
 
-**C2 — Ⅱ．帳票仕様の記入漏れ.** This section is a fixed label list, and a blank or `-` on the wrong
-row is the single most common report finding. Walk the labels present in the sheet — the observed
-full set is 出力ｺｰﾄﾞ / 一時ﾌｧｲﾙ名(共通) / ﾀﾞｳﾝﾛｰﾄﾞﾌｧｲﾙ名(PG個別) / 出力方法 / 用紙ｻｲｽﾞ / 明細部 /
-合計部 / 改ﾍﾟｰｼﾞ条件 / ﾍﾟｰｼﾞﾘｾｯﾄ条件 / ﾍﾟｰｼﾞｶｳﾝﾄ方法 / 抑止項目 / 0件出力 / ﾌｫﾝﾄ / 出力順 / 備考 —
-and check:
+**C2 — Ⅱ．帳票仕様の記入漏れ.** This section is a fixed label list: 出力ｺｰﾄﾞ / 一時ﾌｧｲﾙ名(共通) /
+ﾀﾞｳﾝﾛｰﾄﾞﾌｧｲﾙ名(PG個別) / 出力方法 / 用紙ｻｲｽﾞ / 明細部 / 合計部 / 改ﾍﾟｰｼﾞ条件 / ﾍﾟｰｼﾞﾘｾｯﾄ条件 /
+ﾍﾟｰｼﾞｶｳﾝﾄ方法 / 抑止項目 / 0件出力 / ﾌｫﾝﾄ / 出力順 / 備考.
 
-- `出力ｺｰﾄﾞ` must equal the sheet's own 帳票ID.
-- `用紙ｻｲｽﾞ` and `出力方法` must be concrete. Empty is a finding.
-- **`0件出力`** — `なし` is a decision, empty is an omission. If the report has a 明細 section fed
-  by a multi-row fetch, an empty 0件出力 means nobody decided what prints when the query returns
-  nothing. This is the row most often left blank.
-- **`改ﾍﾟｰｼﾞ条件` / `明細部` / `出力順`** — a report with a 明細 section and `明細部 = -` or an empty
-  出力順 cannot be implemented deterministically: the coder has no row count per page and no sort.
-  Cross-check 出力順 against the `ｿｰﾄ順` of the Ⅰ．帳票出力条件 block that feeds the detail; `ｿｰﾄ順 =
-  なし` together with a multi-row 明細 is itself a finding (non-deterministic print order).
-- A `-` on a row where the report plainly needs a value (合計部 `-` on a report whose 明細 has a
-  総計 column) is worth a line as a lower-confidence judgment call.
+**Read the calibration warning before flagging anything here.** On `SXJCB147` all five reports'
+Ⅱ．帳票仕様 blocks are byte-identical: every one of them has `明細部 = -`, `合計部 = -`,
+`出力順 = -`, `0件出力 = なし`, `抑止項目 = なし`. That is the house template, not five omissions —
+the per-report detail lives in Ⅲ．編集仕様's 処理の流れ (page count is computed there from the
+「設定」ｼｰﾄ's 1ﾍﾟｰｼﾞ明細行数) and the print order comes from the fetch block's ｿｰﾄ順. An earlier
+version of this check flagged every `-` on those three rows and would have emitted about thirteen
+noise findings on one workbook. Flag only:
 
-Do **not** flag `-` on 明細部/合計部/出力順 for a single-page, header-only report — read the Ⅲ．編集仕様
-sections first and only raise these where a 明細 section actually exists.
+- `出力ｺｰﾄﾞ` ≠ the sheet's own 帳票ID.
+- `用紙ｻｲｽﾞ` or `出力方法` **empty** (not `-`, not `なし` — genuinely blank).
+- `0件出力` **empty**. `なし` is a decision and is fine; a blank cell on a report whose 明細 is fed
+  by a 複数件 fetch means nobody decided what prints when the query returns nothing.
+- `出力順 = -` **only when the detail-feeding Ⅰ block's `ｿｰﾄ順` is also `なし`/empty.** That
+  combination is the real defect — non-deterministic print order — and nothing else about these
+  three rows is. `RXJC042` is the counter-example to check yourself against: `出力順 = -` in Ⅱ, but
+  its `(3)対象在庫一覧取得` block sorts by 処置指示No / 仕掛工程ｺｰﾄﾞ / 管理No, so the order is fully
+  determined and there is nothing to report.
+- A row whose value **deviates from the other reports in the same workbook** — that asymmetry is
+  worth a look even when you can't say which side is right.
 
-**C3 — 参照先エイリアスの定義.** Collect every alias used in Ⅲ．編集仕様's `参照先` column and in the
-`項目名・出力値` cells' `<alias>.<column>` references, plus the `検索条件` right-hand sides. Each must
-be defined as a `参照ｴﾝﾃｨﾃｨ` in the Ⅰ．帳票出力条件 block that precedes it (`A` → `TSJAM081:帳票ﾏｽﾀ`,
-`Y`/`ZY` → 引数). **Aliases are block-scoped and get reused** — `A` means a different table in
-`(2)帳票ﾃﾝﾌﾟﾚｰﾄ取得` than in `(3)工程情報取得`. Resolve each reference against its own block before
-calling an alias undefined, and when the 編集仕様 references an alias across blocks without saying
-which, that ambiguity is the finding.
+**C3 — 参照先の解決.** Collect every value in Ⅲ．編集仕様's `参照先` column, plus the
+`<alias>.<column>` references inside `項目名・出力値` and the `検索条件` right-hand sides, and check
+each one resolves.
 
-**C4 — 取得項目と印字項目の双方向照合.**
+**Learn the vocabulary before flagging — it is mostly block numbers, not alias letters.** Measured
+over all five reports of `SXJCB147`, the `参照先` column holds, in frequency order: `-` (no
+reference, a literal or a system value), a **block reference** `(1)` / `(3)` / `(9)` naming a
+numbered block of Ⅰ．帳票出力条件, `引数`, a **sub-referenced block** `(21)-③` / `(21)-④`, a
+**comma-combination** such as `引数,(3)`, and only occasionally a bare `A.<column>`. A rule that
+expects alias letters and flags everything else reports almost every print item as an undefined
+alias — the failure mode to avoid here. Resolve:
+
+- `(n)` and `(n)-x` → the numbered block must exist in that report's Ⅰ．帳票出力条件.
+- `引数` → the report must actually take arguments (a `引数(呼出し元画面)` 参照ｴﾝﾃｨﾃｨ, or a caller
+  documented in the 機能定義書).
+- `<alias>.<column>` → the alias must be a `参照ｴﾝﾃｨﾃｨ` of the block being referenced.
+- a comma-combination → every part must resolve.
+
+**Aliases are block-scoped and get reused** — `A` is `TSJAM081:帳票ﾏｽﾀ` in `(2)帳票ﾃﾝﾌﾟﾚｰﾄ取得` and
+`TXJCM006:移動ﾛｯﾄ` in `(3)対象在庫一覧取得` of the same sheet. Resolve each reference against its own
+block before calling an alias undefined, and when the 編集仕様 cites a bare alias with no block
+reference and more than one block defines it, that ambiguity is the finding.
+
+**Column 17 means different things in Ⅰ and Ⅲ.** In an Ⅰ block it is the `取得内容` column of the
+取得項目 table; only inside Ⅲ．編集仕様 is it `参照先`. Scope the scan to Ⅲ, or the 取得内容 values
+enter the reference set and get reported as unresolvable.
+
+**C4 — 取得項目と印字項目の双方向照合.** Use the reference vocabulary from C3 — a print item's source
+block is usually named by its `(n)` 参照先, not by an alias letter, and the `項目名・出力値` cell then
+names the 取得項目 directly (`RXJC041`'s `指示工程ｺｰﾄﾞ+工程名称` has 参照先 `引数,(3)` and value
+`指示工程ｺｰﾄﾞ(添付情報)(確認用)+':'+工程名`, where `工程名` is block (3)'s only 取得項目).
 - Every `<alias>.<column>` printed in Ⅲ must appear in that block's `取得項目` list. A printed value
   that was never fetched is a genuine implementation hole.
 - Every `取得項目` entry should be printed somewhere in Ⅲ (or consumed by another block's 検索条件).
@@ -178,6 +206,10 @@ the 機能定義書 sheet. A dangling pointer here is cheap to find and expensiv
 Re-read the cells behind each candidate finding. The traps specific to this sheet shape:
 
 - treating the merged `出力項目名` repetition as ten separate items;
+- flagging the Ⅱ．帳票仕様 boilerplate (`明細部 = -` etc.) — see C2's calibration warning;
+- treating a `(n)` block reference in `参照先` as an undefined alias;
+- parsing a dump record that a newline inside a cell split across physical lines: join every line
+  that does not start with `[` onto the previous one first;
 - resolving a block-scoped alias against the wrong block (C3) — the most likely source of a wrong
   "undefined alias" or "unfetched column" finding;
 - calling a renamed-in-place 帳票一覧 row unregistered (see step 2 — this has happened).

@@ -1,7 +1,7 @@
 {
   "name": "rev-skills",
   "description": "設計書レビュー(REV)のスキル集 — 機能定義書/画面設計書/DB設計書/更新条件表/帳票設計書の整合性・命名規則・誤字・フォーマットをチェックする",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "author": {
     "name": "yuichiro-murata"
   }

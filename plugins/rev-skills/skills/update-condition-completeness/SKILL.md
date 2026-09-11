@@ -60,9 +60,13 @@ Rules that make the parse reliable:
   whole sheet for header rows and treat each block independently — each has its own 更新ﾃｰﾌﾞﾙ,
   更新条件 and operation set. Stopping at the first block silently skips most of the specification.
 - **Operation columns are read off the header row, not hardcoded.** Observed label columns: 16, 28,
-  34, 40. Accept a cell as an operation only when its text matches `^(INSERT|UPDATE|DELETE|MERGE)\d*$`
-  — suffixed forms (`INSERT1`, `INSERT2`) and repeated plain labels (two `INSERT` blocks in
-  `TXJAM026WF`) are both real. This filter matters: several sheets put an unrelated
+  34, 40. Accept a cell as an operation only when its text matches
+  `^(INSERT|UPDATE|DELETE|MERGE)[0-9０-９①-⑳]*$`. **The suffix is often a circled digit, not an
+  ASCII one** — `TXJAM026WF`'s header reads `INSERT①` / `INSERT②` while `TXJAM027`'s reads
+  `INSERT1` / `INSERT2`. An ASCII-only `\d*$` silently drops both circled blocks and reviews only
+  the `DELETE`, which is how a first pass over `PXJCO192` missed two thirds of that sheet. Repeated
+  plain labels (two bare `INSERT` columns) are real too. This filter matters: several sheets put an
+  unrelated
   取得ﾃｰﾌﾞﾙ/検索条件 sub-block on the same rows further right (`[14,58]=ﾊﾟﾗﾒｰﾀﾏｽﾀ.ｷｰ1`,
   `[14,58]=共通ｺｰﾄﾞﾏｽﾀ.ｷｰ1`), and a "any non-empty cell to the right is an operation" rule turns
   those into phantom operations.
@@ -83,6 +87,13 @@ Rules that make the parse reliable:
   update spec was withdrawn but which is still declared in Ⅲ．入出力定義 is a real finding — but it
   belongs to `design-doc-io-table-check`, not here.
 - **Hidden sheets are out of scope**, per the shared dump doc's default.
+- **A dump record can span several physical lines.** The dump writes one line per sheet row, but a
+  cell whose own value contains a newline (a multi-line 更新条件, a `※…`-annotated INSERT value)
+  puts that newline straight into the file. Join every line that does **not** start with `[` onto
+  the previous line before parsing, or the row is truncated at the newline and every operation
+  column after it reads as empty — which looks exactly like "未設定" and produces false C2/C3
+  findings. Confirmed on `TXJCM137WF` row 26 (`ﾜｰｸﾌﾛｰID`), whose INSERT value carries a
+  `※ｼｽﾃﾑ共通設計書…` continuation.
 
 ## Procedure
 
@@ -135,7 +146,7 @@ Observed standard for the leading common-column block
 | 更新日時 | ｼｽﾃﾑ日時 | ｼｽﾃﾑ日時 | `-` |
 | 更新ﾎｽﾄ名 | `-` | `-` | `-` |
 | 更新ﾌﾟﾛｸﾞﾗﾑID | 画面ID | 画面ID | `-` |
-| 排他ﾌﾗｸﾞ | `1` | `+1` | `-` |
+| 排他ﾌﾗｸﾞ | 何らかの初期値 | 増分 | `-` |
 | 部門GRP | 設定 | `[KEY]` | `[KEY]` |
 | 事業部ｺｰﾄﾞ | 設定 | `-` | `-` |
 | 移行ｵﾌﾞｼﾞｪｸﾄID | `-` | `-` | `-` |
@@ -143,15 +154,36 @@ Observed standard for the leading common-column block
 WF tables carry four more after that block — `ﾜｰｸﾌﾛｰID`, `ｸﾞﾙｰﾌﾟID`, `ﾜｰｸﾌﾛｰ申請区分`, `元排他ﾌﾗｸﾞ` —
 and the WF sheets in the same workbook are the calibration set for those.
 
+**Do not hardcode `排他ﾌﾗｸﾞ = 1` on INSERT.** A first version of this table did, and running it over
+`PXJCO192` produced four false findings in a row: `TSJCM139WF`, `TXJCM838WF` and both of
+`TXJAM026WF`'s INSERT blocks set `ﾗﾝﾀﾞﾑ値`, and `TXJAM025WF` sets `※3` (a footnote reference), while
+only `TXJCM137WF`/`TXJCM501` use the literal `1`. On this table the initial lock value is a design
+choice per table, so the only INSERT-side defect worth reporting is `排他ﾌﾗｸﾞ` left **unset**. On
+UPDATE the opposite holds: the value must express an increment (`+1`), because a literal that does
+not advance the counter defeats optimistic locking.
+
 ### 4. Run the checks
 
 **C1 — 項目リストが実テーブルと一致しているか.** The 更新条件表's `項目名` rows should be the layout's
 `項目名` list, in the layout's `No.` order. Report: a layout column with **no row at all** in the
 更新条件表 (the sheet was written against an older table definition — the coder has no instruction
-for that column); a row whose 項目名 exists in **no** layout column (usually a renamed column, cite
-the nearest layout name); and a row order that diverges from the layout (low confidence on its own —
-report only when it coincides with added/removed columns, since it is then evidence the sheet was
-patched by hand rather than regenerated).
+for that column); a row whose 項目名 exists in **no** layout column; and a row order that diverges
+from the layout (low confidence on its own — report only when it coincides with added/removed
+columns, since it is then evidence the sheet was patched by hand rather than regenerated).
+
+**Pair the two directions before reporting.** When a "missing" layout name and an "extra" sheet name
+are near-matches — one is a prefix or substring of the other — they are one finding (a rename, or a
+key written only in part), not two. `TSJCM139WF` is the live example: the layout's PK7 NOT NULL
+column is `工程ｺｰﾄﾞ工程No` and the 更新条件表 row says `工程ｺｰﾄﾞ`. Reported as two lines it reads like
+an unrelated deletion plus an unrelated addition; reported as one it says what the reviewer needs to
+decide — either the doc carries a stale name, or the sheet is only setting the 工程ｺｰﾄﾞ half of a
+concatenated key. (That the project really does concatenate this way is visible in the same
+workbook: `TXJCM838WF`'s `指示工程ｺｰﾄﾞ` is set from `G6).指示工程 ※工程ｺｰﾄﾞ部分のみ`.)
+
+This check earns its place: on `PXJCO192`'s `TXJCM501` it found three layout columns —
+`停止工程GRP`, `製造ﾛｯﾄNo2`, `解除理由` — with no row in the 更新条件表 at all. Note this only
+surfaces if step 2's PH3 > PH2 precedence was applied: `TXJCM501` has a layout file under **both**
+phase folders, and the 更新条件表 matches the older one.
 
 **C2 — INSERT で notnull 列が未設定.** For every operation whose label starts with `INSERT` (or
 `MERGE`): every layout column with `notnull = Y` must have a non-`-`, non-empty value. An unset
@@ -166,6 +198,13 @@ than staying silent — "notnull だが default 設定あり" is useful to the r
   here** — `[KEY]` on 3 of a 5-column PK means the statement updates or deletes a *range* of rows,
   which is nearly always unintended; if it is intended, the 更新条件 text should say so, so check the
   trigger text before flagging and quote it either way.
+  **Exception — suppress it for the DELETE half of a DELETE⇒INSERT block.** Where a block pairs a
+  DELETE with one or more INSERTs on the same table, deleting by a partial key is the whole point:
+  the statement clears every child row for a parent key and the INSERTs rewrite them. Flagging it
+  produced noise on two of `PXJCO192`'s sheets (`TXJCM838WF`, where the DELETE omits `SEQ` from a
+  7-column PK, and `TXJAM026WF`, where it omits `工程ｺｰﾄﾞ`), and in both the paired INSERT sets the
+  full key. Report a partial key only for a **standalone** DELETE, for an UPDATE, or when the paired
+  INSERT does **not** set the full PK.
 - A `[KEY]` on a column that is **not** in `I01` is also worth a line: either the doc means a
   non-unique filter (fine, but then see the range warning above) or the PK in the layout is wrong.
 
@@ -174,8 +213,12 @@ step 3. The finding shape that actually shows up: **`登録者`/`登録日時` b
 not hypothetical — `更新条件表(TXJCM137WF)` in `PXJCO192` sets both on its UPDATE
 (`[16,36]=作業者ｺｰﾄﾞ`, `[17,36]=ｼｽﾃﾑ日時(...)`) while every other UPDATE block in the same workbook,
 including `TXJCM501`'s and `TXJCM137`'s, correctly leaves them `-`. Overwriting 登録日時 on every
-update destroys the record's creation time. Also check: 排他ﾌﾗｸﾞ set to `1` instead of `+1` on UPDATE
-(the optimistic-lock counter never advances), and 更新者/更新日時 left `-` on an UPDATE.
+update destroys the record's creation time. Also check: 排他ﾌﾗｸﾞ set to a non-incrementing literal
+on UPDATE (the optimistic-lock counter never advances), and 更新者/更新日時 left `-` on an UPDATE.
+
+A full run of C1-C7 over `PXJCO192`'s seven live 更新条件表 sheets produced exactly three findings —
+this one, the `TXJCM501` missing columns under C1, and the `TSJCM139WF` name mismatch — with no
+C2 or C3 hits. That ratio is the target: this check is meant to be quiet on a clean sheet.
 
 **C5 — 排他制御が更新と噛み合っているか.** If the table has an `排他ﾌﾗｸﾞ` column and the block has an
 UPDATE, the 更新条件 (or the 機能定義書's processing overview) should describe the optimistic-lock
