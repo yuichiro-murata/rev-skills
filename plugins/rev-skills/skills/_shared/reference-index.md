@@ -27,9 +27,12 @@ structural trap that a hand-rolled index gets wrong silently:
 - The table IDs a program cites include views and suffixed forms (`VXJCM004_31`, `TXJAM061WF`,
   `VXJCM004_31_ALL`); an index built from a `T`-only ID pattern silently omits them.
 
-Only `design-doc-internal-consistency` reads this file today — it is the only check that needs
-`id → 画面項目名`. `xlsx-db-column-check` and `design-doc-io-table-check` keep using the dump cache
-until their masters get builders of their own.
+Two checks read this file today, both because they need `id → 画面項目名`:
+`design-doc-internal-consistency` (screen-item IDs registered in the dictionary) and
+`report-design-check` (the `画面項目ID` column on a 帳票設計書's print items — same dictionary, same
+prefix routing, and a report's print labels routinely cite shared `XJZ`/`SJZ` items, so the
+per-prefix routing below matters there too). `xlsx-db-column-check` and `design-doc-io-table-check`
+keep using the dump cache until their masters get builders of their own.
 
 ## Who builds the index: the orchestrator, once, before launching agents
 

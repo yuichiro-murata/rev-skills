@@ -119,7 +119,7 @@ Measured on `SXJCB147_処置指示発行(ｻﾌﾞﾌﾟﾛ).xlsx` (7 sheets, 10
 timeout for this step rather than skipping the cascade.
 
 **Skip 詳細設計書* and *画面ｲﾒｰｼﾞ* sheets — don't dump their content at all.** Confirmed across every
-REV skill's own instructions: 5 of the 6 single-program skills explicitly say "don't read/dump
+REV skill's own instructions: most of the single-program skills explicitly say "don't read/dump
 詳細設計書 sheets" (it's near-empty boilerplate in practice), and `design-doc-formatting-consistency`
 also excludes both 詳細設計書 and the 画面ｲﾒｰｼﾞ mockup sheet from its scan scope (the mockup is a
 screenshot image with placeholder cells, confirmed content-free in every program checked so far).

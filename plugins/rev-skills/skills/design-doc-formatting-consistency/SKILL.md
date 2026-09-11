@@ -1,6 +1,6 @@
 ---
 name: design-doc-formatting-consistency
-description: Scan a design-doc workbook for stray font-size and cell-merge irregularities — a cell whose font size or merge span breaks from the surrounding pattern, which usually signals a leftover copy-paste artifact, an incompletely-applied edit, or a duplicated header block that never got updated. This is a formatting/editing-hygiene check, distinct from design-doc-internal-consistency (cross-reference completeness), design-doc-io-table-check (I/O table completeness), xlsx-db-column-check (DB column existence), and design-doc-typo-check (actual Japanese-language proofreading). Use as part of a full program REV, or when the user specifically asks about フォントサイズ/セル結合のブレ. When the user asks to REV a single design-doc workbook without naming which checks they want, the entry point is `rev-program-review`: it first asks the user, checkbox-style, which of the 6 single-program checks to run, then runs only those as one combined pass. Do not launch all six yourself. Run this skill standalone only when it was one of the selected checks, or when the user asked for this check by name.
+description: Scan a design-doc workbook for stray font-size and cell-merge irregularities — a cell whose font size or merge span breaks from the surrounding pattern, which usually signals a leftover copy-paste artifact, an incompletely-applied edit, or a duplicated header block that never got updated. This is a formatting/editing-hygiene check, distinct from design-doc-internal-consistency (cross-reference completeness), design-doc-io-table-check (I/O table completeness), xlsx-db-column-check (DB column existence), and design-doc-typo-check (actual Japanese-language proofreading). Use as part of a full program REV, or when the user specifically asks about フォントサイズ/セル結合のブレ. When the user asks to REV a single design-doc workbook without naming which checks they want, the entry point is `rev-program-review`: it first asks the user, checkbox-style, which of the 8 single-program checks to run, then runs only those as one combined pass. Do not launch all eight yourself. Run this skill standalone only when it was one of the selected checks, or when the user asked for this check by name.
 ---
 
 # design-doc-formatting-consistency
@@ -16,7 +16,7 @@ without naming specific checks, `rev-program-review` is the entry point: it pres
 single-program checks as a checkbox list (`AskUserQuestion`, multiSelect), then runs only the
 selected ones as one combined pass, dumping the workbook once up front and sharing the text with
 every check (see `_shared/xlsx-excel-com-dump.md`'s "dump once, share the text" section). Do **not**
-unconditionally launch all 6 yourself, and do not post a per-check status update — the combined
+unconditionally launch all 8 yourself, and do not post a per-check status update — the combined
 report is posted once, after every selected check has finished. This skill runs on its own when it
 was one of the selected checks, or when the user asked for this check by name.
 
